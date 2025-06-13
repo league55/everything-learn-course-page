@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useCallFrame, useParticipantIds, useLocalParticipant, useParticipant } from '@daily-co/daily-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -40,8 +40,15 @@ export function DailyVideo({
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [debugInfo, setDebugInfo] = useState<string[]>([])
 
+  // Use refs to track component state and prevent race conditions
+  const isInitializingRef = useRef(false)
+  const isCleaningUpRef = useRef(false)
+  const hasJoinedRef = useRef(false)
+  const componentMountedRef = useRef(true)
+
   // Add debug logging helper
   const addDebugLog = useCallback((message: string) => {
+    if (!componentMountedRef.current) return
     console.log('Daily Video Debug:', message)
     setDebugInfo(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${message}`])
   }, [])
@@ -52,14 +59,13 @@ export function DailyVideo({
 
   // Debug call frame state
   useEffect(() => {
-    addDebugLog(`Call frame state: ${callFrame ? 'available' : 'null'}`)
-    if (callFrame) {
-      addDebugLog(`Call frame meeting state: ${callFrame.meetingState()}`)
-    }
+    if (!componentMountedRef.current) return
+    addDebugLog(`Call frame state: ${callFrame ? callFrame.meetingState() : 'null'}`)
   }, [callFrame, addDebugLog])
 
   // Debug room URL
   useEffect(() => {
+    if (!componentMountedRef.current) return
     addDebugLog(`Room URL received: ${roomUrl}`)
     // Validate URL format
     try {
@@ -72,11 +78,16 @@ export function DailyVideo({
 
   // Stable callback using useCallback
   const handleConversationEnd = useCallback((transcript?: string) => {
+    if (isCleaningUpRef.current || !componentMountedRef.current) {
+      addDebugLog('Ignoring conversation end - component is cleaning up')
+      return
+    }
     addDebugLog('Conversation ended, calling onConversationEnd')
     onConversationEnd(transcript)
   }, [onConversationEnd, addDebugLog])
 
   const handleError = useCallback((error: string) => {
+    if (!componentMountedRef.current) return
     addDebugLog(`Error occurred: ${error}`)
     setConnectionError(error)
     onError(error)
@@ -84,19 +95,32 @@ export function DailyVideo({
 
   // Event handlers
   const handleJoinedMeeting = useCallback(() => {
+    if (!componentMountedRef.current || isCleaningUpRef.current) {
+      addDebugLog('Ignoring joined-meeting - component not ready')
+      return
+    }
     addDebugLog('Successfully joined Daily meeting')
+    hasJoinedRef.current = true
     setIsConnecting(false)
     setIsConnected(true)
     onConnected()
   }, [onConnected, addDebugLog])
 
   const handleLeftMeeting = useCallback(() => {
+    if (!componentMountedRef.current) return
     addDebugLog('Left Daily meeting')
-    setIsConnected(false)
-    handleConversationEnd()
+    
+    // Only trigger conversation end if we actually joined
+    if (hasJoinedRef.current && !isCleaningUpRef.current) {
+      setIsConnected(false)
+      handleConversationEnd()
+    } else {
+      addDebugLog('Ignoring left-meeting - never properly joined or cleaning up')
+    }
   }, [handleConversationEnd, addDebugLog])
 
   const handleCallError = useCallback((error: any) => {
+    if (!componentMountedRef.current) return
     const errorMsg = `Call error: ${error.message || error.toString() || 'Unknown error'}`
     addDebugLog(errorMsg)
     setIsConnecting(false)
@@ -104,28 +128,39 @@ export function DailyVideo({
   }, [handleError, addDebugLog])
 
   const handleParticipantJoined = useCallback((event: any) => {
+    if (!componentMountedRef.current) return
     addDebugLog(`Participant joined: ${event.participant?.user_id || 'unknown'}`)
   }, [addDebugLog])
 
   const handleParticipantLeft = useCallback((event: any) => {
+    if (!componentMountedRef.current) return
     addDebugLog(`Participant left: ${event.participant?.user_id || 'unknown'}`)
   }, [addDebugLog])
 
   const handleMeetingStateChanged = useCallback((event: any) => {
+    if (!componentMountedRef.current) return
     addDebugLog(`Meeting state changed: ${event.meetingState}`)
   }, [addDebugLog])
 
   // Initialize call when component mounts
   useEffect(() => {
+    componentMountedRef.current = true
     let joinTimeout: NodeJS.Timeout
-    let isMounted = true
 
     const initializeCall = async () => {
       try {
+        // Prevent multiple initializations
+        if (isInitializingRef.current || !componentMountedRef.current) {
+          addDebugLog('Skipping initialization - already initializing or component unmounted')
+          return
+        }
+
+        isInitializingRef.current = true
         addDebugLog('Starting call initialization...')
         
         if (!callFrame) {
           addDebugLog('Call frame not ready yet, will retry when available')
+          isInitializingRef.current = false
           return
         }
 
@@ -133,10 +168,19 @@ export function DailyVideo({
           throw new Error('No room URL provided')
         }
 
+        // Check if call frame is destroyed
+        try {
+          const meetingState = callFrame.meetingState()
+          addDebugLog(`Current meeting state: ${meetingState}`)
+        } catch (e) {
+          throw new Error('Call frame is destroyed or not ready')
+        }
+
         // Clear any existing state
         setConnectionError(null)
         setIsConnecting(true)
         setIsConnected(false)
+        hasJoinedRef.current = false
 
         addDebugLog('Adding event listeners...')
         // Add event listeners
@@ -149,7 +193,7 @@ export function DailyVideo({
 
         // Set a timeout for connection
         joinTimeout = setTimeout(() => {
-          if (isMounted && !isConnected) {
+          if (componentMountedRef.current && !hasJoinedRef.current && !isCleaningUpRef.current) {
             addDebugLog('Connection timeout reached')
             handleError('Connection timeout. Please check your internet connection and try again.')
           }
@@ -171,6 +215,11 @@ export function DailyVideo({
           // Continue anyway, Daily might still work
         }
 
+        if (!componentMountedRef.current || isCleaningUpRef.current) {
+          addDebugLog('Component unmounted during initialization, aborting')
+          return
+        }
+
         addDebugLog('Attempting to join Daily call...')
         
         // Join the meeting
@@ -188,11 +237,13 @@ export function DailyVideo({
 
       } catch (error) {
         addDebugLog(`Failed to initialize call: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        if (isMounted) {
+        if (componentMountedRef.current && !isCleaningUpRef.current) {
           setIsConnecting(false)
-          if (joinTimeout) clearTimeout(joinTimeout)
           handleError(`Failed to join conversation: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
+      } finally {
+        isInitializingRef.current = false
+        if (joinTimeout) clearTimeout(joinTimeout)
       }
     }
 
@@ -202,13 +253,20 @@ export function DailyVideo({
 
     // Cleanup function
     return () => {
-      isMounted = false
-      addDebugLog('Cleaning up Daily Video component')
-      if (joinTimeout) clearTimeout(joinTimeout)
+      addDebugLog('Starting cleanup process')
+      componentMountedRef.current = false
+      isCleaningUpRef.current = true
+      
+      if (joinTimeout) {
+        clearTimeout(joinTimeout)
+      }
       
       if (callFrame) {
-        addDebugLog('Removing event listeners and leaving call during cleanup')
         try {
+          // Check if call frame is still valid before trying to use it
+          const meetingState = callFrame.meetingState()
+          addDebugLog(`Cleanup: Current meeting state: ${meetingState}`)
+          
           // Remove all event listeners
           callFrame.off('joined-meeting', handleJoinedMeeting)
           callFrame.off('left-meeting', handleLeftMeeting)
@@ -217,14 +275,17 @@ export function DailyVideo({
           callFrame.off('participant-left', handleParticipantLeft)
           callFrame.off('meeting-state-changed', handleMeetingStateChanged)
           
-          // Leave the call if connected
-          if (isConnected) {
+          // Leave the call if we actually joined
+          if (hasJoinedRef.current && meetingState !== 'left-meeting') {
+            addDebugLog('Leaving call during cleanup')
             callFrame.leave()
           }
         } catch (error) {
-          addDebugLog(`Error during cleanup: ${error instanceof Error ? error.message : 'Unknown error'}`)
+          addDebugLog(`Cleanup error (expected if call frame destroyed): ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       }
+      
+      addDebugLog('Cleanup completed')
     }
   }, [
     callFrame, 
@@ -235,34 +296,46 @@ export function DailyVideo({
     handleParticipantJoined,
     handleParticipantLeft,
     handleMeetingStateChanged,
-    handleError, 
-    isConnected,
+    handleError,
     addDebugLog
   ])
 
   const toggleMute = () => {
-    if (!callFrame) return
+    if (!callFrame || !componentMountedRef.current) return
 
-    const newMuted = !isMuted
-    callFrame.setLocalAudio(!newMuted)
-    setIsMuted(newMuted)
-    addDebugLog(`Audio ${newMuted ? 'muted' : 'unmuted'}`)
+    try {
+      const newMuted = !isMuted
+      callFrame.setLocalAudio(!newMuted)
+      setIsMuted(newMuted)
+      addDebugLog(`Audio ${newMuted ? 'muted' : 'unmuted'}`)
+    } catch (error) {
+      addDebugLog(`Error toggling mute: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   const toggleVideo = () => {
-    if (!callFrame) return
+    if (!callFrame || !componentMountedRef.current) return
 
-    const newVideoOff = !isVideoOff
-    callFrame.setLocalVideo(!newVideoOff)
-    setIsVideoOff(newVideoOff)
-    addDebugLog(`Video ${newVideoOff ? 'disabled' : 'enabled'}`)
+    try {
+      const newVideoOff = !isVideoOff
+      callFrame.setLocalVideo(!newVideoOff)
+      setIsVideoOff(newVideoOff)
+      addDebugLog(`Video ${newVideoOff ? 'disabled' : 'enabled'}`)
+    } catch (error) {
+      addDebugLog(`Error toggling video: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   const leaveCall = () => {
-    if (!callFrame) return
+    if (!callFrame || !componentMountedRef.current) return
 
-    addDebugLog('User manually leaving call')
-    callFrame.leave()
+    try {
+      addDebugLog('User manually leaving call')
+      isCleaningUpRef.current = true
+      callFrame.leave()
+    } catch (error) {
+      addDebugLog(`Error leaving call: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   // Show error state

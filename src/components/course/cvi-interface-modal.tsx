@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -32,6 +32,12 @@ export function CviInterfaceModal({
   const [sessionEnded, setSessionEnded] = useState(false)
   const [transcript, setTranscript] = useState<string>('')
   const [isConnecting, setIsConnecting] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Use refs to prevent race conditions and track component state
+  const hasCompletedRef = useRef(false)
+  const isClosingRef = useRef(false)
+  const componentMountedRef = useRef(true)
 
   // Debug the Daily room URL
   useEffect(() => {
@@ -49,6 +55,7 @@ export function CviInterfaceModal({
     try {
       const url = new URL(dailyRoomUrl)
       console.log('CVI Modal: URL validation passed:', url.hostname)
+      setIsInitialized(true)
     } catch (e) {
       console.error('CVI Modal: Invalid URL format:', e)
       setErrorMessage('Invalid video call URL format')
@@ -56,40 +63,6 @@ export function CviInterfaceModal({
       return
     }
   }, [dailyRoomUrl])
-
-  const handleConversationEnd = (conversationTranscript?: string) => {
-    console.log('CVI Modal: Conversation ended with transcript:', conversationTranscript?.substring(0, 100))
-    setTranscript(conversationTranscript || '')
-    setSessionEnded(true)
-    setIsConnecting(false)
-  }
-
-  const handleError = (error: string) => {
-    console.error('CVI Modal Error:', error)
-    setErrorMessage(error)
-    setHasError(true)
-    setIsConnecting(false)
-  }
-
-  const handleConnected = () => {
-    console.log('Successfully connected to Daily room')
-    setIsConnecting(false)
-    setHasError(false)
-  }
-
-  const handleManualComplete = () => {
-    console.log('User manually completing session')
-    if (onComplete) {
-      onComplete(transcript)
-    }
-  }
-
-  const handleCloseWithoutComplete = () => {
-    console.log('User closing modal without completing')
-    onClose()
-  }
-
-  const isExam = conversationType === 'exam'
 
   // Check for basic browser support
   useEffect(() => {
@@ -115,6 +88,66 @@ export function CviInterfaceModal({
         console.error('CVI Modal: Error enumerating devices:', error)
       })
   }, [])
+
+  // Set component mounted ref
+  useEffect(() => {
+    componentMountedRef.current = true
+    return () => {
+      componentMountedRef.current = false
+    }
+  }, [])
+
+  const handleConversationEnd = useCallback((conversationTranscript?: string) => {
+    if (hasCompletedRef.current || isClosingRef.current || !componentMountedRef.current) {
+      console.log('CVI Modal: Ignoring conversation end - already completed or closing')
+      return
+    }
+    
+    console.log('CVI Modal: Conversation ended with transcript:', conversationTranscript?.substring(0, 100))
+    hasCompletedRef.current = true
+    setTranscript(conversationTranscript || '')
+    setSessionEnded(true)
+    setIsConnecting(false)
+  }, [])
+
+  const handleError = useCallback((error: string) => {
+    if (hasCompletedRef.current || isClosingRef.current || !componentMountedRef.current) {
+      console.log('CVI Modal: Ignoring error - already completed or closing')
+      return
+    }
+    
+    console.error('CVI Modal Error:', error)
+    setErrorMessage(error)
+    setHasError(true)
+    setIsConnecting(false)
+  }, [])
+
+  const handleConnected = useCallback(() => {
+    if (!componentMountedRef.current) return
+    console.log('Successfully connected to Daily room')
+    setIsConnecting(false)
+    setHasError(false)
+  }, [])
+
+  const handleManualComplete = useCallback(() => {
+    if (hasCompletedRef.current || isClosingRef.current) return
+    
+    console.log('User manually completing session')
+    hasCompletedRef.current = true
+    if (onComplete) {
+      onComplete(transcript)
+    }
+  }, [onComplete, transcript])
+
+  const handleCloseWithoutComplete = useCallback(() => {
+    if (hasCompletedRef.current) return
+    
+    console.log('User closing modal without completing')
+    isClosingRef.current = true
+    onClose()
+  }, [onClose])
+
+  const isExam = conversationType === 'exam'
 
   // Error state
   if (hasError) {
@@ -194,8 +227,8 @@ export function CviInterfaceModal({
     )
   }
 
-  // Don't render DailyProvider if we don't have a valid URL
-  if (!dailyRoomUrl) {
+  // Don't render DailyProvider if we don't have a valid URL or not initialized
+  if (!dailyRoomUrl || !isInitialized) {
     return (
       <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
         <Card className="w-full max-w-2xl bg-card shadow-2xl">
