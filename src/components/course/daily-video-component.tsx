@@ -38,54 +38,99 @@ export function DailyVideo({
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoOff, setIsVideoOff] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
+
+  // Add debug logging helper
+  const addDebugLog = useCallback((message: string) => {
+    console.log('Daily Video Debug:', message)
+    setDebugInfo(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${message}`])
+  }, [])
 
   // Get the first remote participant (AI expert)
   const remoteParticipantId = participantIds.find(id => id !== 'local')
   const remoteParticipant = useParticipant(remoteParticipantId)
 
+  // Debug call frame state
+  useEffect(() => {
+    addDebugLog(`Call frame state: ${callFrame ? 'available' : 'null'}`)
+    if (callFrame) {
+      addDebugLog(`Call frame meeting state: ${callFrame.meetingState()}`)
+    }
+  }, [callFrame, addDebugLog])
+
+  // Debug room URL
+  useEffect(() => {
+    addDebugLog(`Room URL received: ${roomUrl}`)
+    // Validate URL format
+    try {
+      const url = new URL(roomUrl)
+      addDebugLog(`URL is valid: ${url.hostname}`)
+    } catch (e) {
+      addDebugLog(`URL is invalid: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    }
+  }, [roomUrl, addDebugLog])
+
   // Stable callback using useCallback
   const handleConversationEnd = useCallback((transcript?: string) => {
-    console.log('Daily Video: Conversation ended, calling onConversationEnd')
+    addDebugLog('Conversation ended, calling onConversationEnd')
     onConversationEnd(transcript)
-  }, [onConversationEnd])
+  }, [onConversationEnd, addDebugLog])
 
   const handleError = useCallback((error: string) => {
-    console.error('Daily Video error:', error)
+    addDebugLog(`Error occurred: ${error}`)
     setConnectionError(error)
     onError(error)
-  }, [onError])
+  }, [onError, addDebugLog])
 
   // Event handlers
   const handleJoinedMeeting = useCallback(() => {
-    console.log('Successfully joined Daily meeting')
+    addDebugLog('Successfully joined Daily meeting')
     setIsConnecting(false)
     setIsConnected(true)
     onConnected()
-  }, [onConnected])
+  }, [onConnected, addDebugLog])
 
   const handleLeftMeeting = useCallback(() => {
-    console.log('Left Daily meeting')
+    addDebugLog('Left Daily meeting')
     setIsConnected(false)
     handleConversationEnd()
-  }, [handleConversationEnd])
+  }, [handleConversationEnd, addDebugLog])
 
   const handleCallError = useCallback((error: any) => {
-    console.error('Daily call error:', error)
+    const errorMsg = `Call error: ${error.message || error.toString() || 'Unknown error'}`
+    addDebugLog(errorMsg)
     setIsConnecting(false)
-    handleError(`Call error: ${error.message || 'Failed to connect to video call'}`)
-  }, [handleError])
+    handleError(errorMsg)
+  }, [handleError, addDebugLog])
+
+  const handleParticipantJoined = useCallback((event: any) => {
+    addDebugLog(`Participant joined: ${event.participant?.user_id || 'unknown'}`)
+  }, [addDebugLog])
+
+  const handleParticipantLeft = useCallback((event: any) => {
+    addDebugLog(`Participant left: ${event.participant?.user_id || 'unknown'}`)
+  }, [addDebugLog])
+
+  const handleMeetingStateChanged = useCallback((event: any) => {
+    addDebugLog(`Meeting state changed: ${event.meetingState}`)
+  }, [addDebugLog])
 
   // Initialize call when component mounts
   useEffect(() => {
     let joinTimeout: NodeJS.Timeout
+    let isMounted = true
 
     const initializeCall = async () => {
       try {
-        console.log('Initializing Daily call with URL:', roomUrl)
+        addDebugLog('Starting call initialization...')
         
         if (!callFrame) {
-          console.log('Call frame not ready yet')
+          addDebugLog('Call frame not ready yet, will retry when available')
           return
+        }
+
+        if (!roomUrl) {
+          throw new Error('No room URL provided')
         }
 
         // Clear any existing state
@@ -93,37 +138,61 @@ export function DailyVideo({
         setIsConnecting(true)
         setIsConnected(false)
 
+        addDebugLog('Adding event listeners...')
         // Add event listeners
         callFrame.on('joined-meeting', handleJoinedMeeting)
         callFrame.on('left-meeting', handleLeftMeeting)
         callFrame.on('error', handleCallError)
+        callFrame.on('participant-joined', handleParticipantJoined)
+        callFrame.on('participant-left', handleParticipantLeft)
+        callFrame.on('meeting-state-changed', handleMeetingStateChanged)
 
         // Set a timeout for connection
         joinTimeout = setTimeout(() => {
-          if (!isConnected) {
-            console.error('Connection timeout - failed to join within 30 seconds')
+          if (isMounted && !isConnected) {
+            addDebugLog('Connection timeout reached')
             handleError('Connection timeout. Please check your internet connection and try again.')
           }
         }, 30000) // 30 second timeout
 
-        console.log('Attempting to join Daily call...')
+        addDebugLog('Requesting media permissions...')
         
-        // Join the meeting with explicit permissions request
-        await callFrame.join({ 
+        // First, try to get user media to trigger permission request
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: true, 
+            audio: true 
+          })
+          addDebugLog('Media permissions granted successfully')
+          // Stop the stream since Daily will handle media
+          stream.getTracks().forEach(track => track.stop())
+        } catch (mediaError) {
+          addDebugLog(`Media permission error: ${mediaError instanceof Error ? mediaError.message : 'Unknown error'}`)
+          // Continue anyway, Daily might still work
+        }
+
+        addDebugLog('Attempting to join Daily call...')
+        
+        // Join the meeting
+        const joinOptions = { 
           url: roomUrl,
           startAudioOff: false,
           startVideoOff: false,
-          // Request permissions explicitly
           userName: 'Student'
-        })
-
-        console.log('Join request sent successfully')
+        }
+        
+        addDebugLog(`Join options: ${JSON.stringify(joinOptions)}`)
+        
+        const result = await callFrame.join(joinOptions)
+        addDebugLog(`Join result: ${JSON.stringify(result)}`)
 
       } catch (error) {
-        console.error('Failed to initialize call:', error)
-        setIsConnecting(false)
-        if (joinTimeout) clearTimeout(joinTimeout)
-        handleError(`Failed to join conversation: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        addDebugLog(`Failed to initialize call: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        if (isMounted) {
+          setIsConnecting(false)
+          if (joinTimeout) clearTimeout(joinTimeout)
+          handleError(`Failed to join conversation: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
       }
     }
 
@@ -133,27 +202,43 @@ export function DailyVideo({
 
     // Cleanup function
     return () => {
-      console.log('Cleaning up Daily Video component')
+      isMounted = false
+      addDebugLog('Cleaning up Daily Video component')
       if (joinTimeout) clearTimeout(joinTimeout)
       
       if (callFrame) {
-        console.log('Removing event listeners and leaving call during cleanup')
+        addDebugLog('Removing event listeners and leaving call during cleanup')
         try {
           // Remove all event listeners
           callFrame.off('joined-meeting', handleJoinedMeeting)
           callFrame.off('left-meeting', handleLeftMeeting)
           callFrame.off('error', handleCallError)
+          callFrame.off('participant-joined', handleParticipantJoined)
+          callFrame.off('participant-left', handleParticipantLeft)
+          callFrame.off('meeting-state-changed', handleMeetingStateChanged)
           
           // Leave the call if connected
           if (isConnected) {
             callFrame.leave()
           }
         } catch (error) {
-          console.error('Error during cleanup:', error)
+          addDebugLog(`Error during cleanup: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       }
     }
-  }, [callFrame, roomUrl, handleJoinedMeeting, handleLeftMeeting, handleCallError, handleError, isConnected])
+  }, [
+    callFrame, 
+    roomUrl, 
+    handleJoinedMeeting, 
+    handleLeftMeeting, 
+    handleCallError, 
+    handleParticipantJoined,
+    handleParticipantLeft,
+    handleMeetingStateChanged,
+    handleError, 
+    isConnected,
+    addDebugLog
+  ])
 
   const toggleMute = () => {
     if (!callFrame) return
@@ -161,6 +246,7 @@ export function DailyVideo({
     const newMuted = !isMuted
     callFrame.setLocalAudio(!newMuted)
     setIsMuted(newMuted)
+    addDebugLog(`Audio ${newMuted ? 'muted' : 'unmuted'}`)
   }
 
   const toggleVideo = () => {
@@ -169,12 +255,13 @@ export function DailyVideo({
     const newVideoOff = !isVideoOff
     callFrame.setLocalVideo(!newVideoOff)
     setIsVideoOff(newVideoOff)
+    addDebugLog(`Video ${newVideoOff ? 'disabled' : 'enabled'}`)
   }
 
   const leaveCall = () => {
     if (!callFrame) return
 
-    console.log('User manually leaving call')
+    addDebugLog('User manually leaving call')
     callFrame.leave()
   }
 
@@ -188,7 +275,18 @@ export function DailyVideo({
           <p className="text-muted-foreground mb-4 text-sm">
             {connectionError}
           </p>
-          <Button onClick={() => window.location.reload()} className="w-full">
+          
+          {/* Debug information */}
+          <details className="mt-4 text-left">
+            <summary className="cursor-pointer text-sm font-medium">Debug Information</summary>
+            <div className="mt-2 bg-muted p-2 rounded text-xs space-y-1 max-h-32 overflow-y-auto">
+              {debugInfo.map((log, index) => (
+                <div key={index}>{log}</div>
+              ))}
+            </div>
+          </details>
+          
+          <Button onClick={() => window.location.reload()} className="w-full mt-4">
             Try Again
           </Button>
         </Card>
@@ -200,15 +298,25 @@ export function DailyVideo({
   if (isConnecting || !callFrame) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <Card className="p-8 text-center">
+        <Card className="p-8 text-center max-w-lg">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
           <h3 className="text-lg font-semibold mb-2">Connecting to your expert...</h3>
           <p className="text-muted-foreground mb-4">
             Please allow camera and microphone access when prompted
           </p>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground mb-4">
             This may take up to 30 seconds
           </div>
+          
+          {/* Debug information */}
+          <details className="text-left">
+            <summary className="cursor-pointer text-sm font-medium">Debug Information</summary>
+            <div className="mt-2 bg-muted p-2 rounded text-xs space-y-1 max-h-32 overflow-y-auto">
+              {debugInfo.map((log, index) => (
+                <div key={index}>{log}</div>
+              ))}
+            </div>
+          </details>
         </Card>
       </div>
     )

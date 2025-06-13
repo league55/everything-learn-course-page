@@ -33,6 +33,30 @@ export function CviInterfaceModal({
   const [transcript, setTranscript] = useState<string>('')
   const [isConnecting, setIsConnecting] = useState(true)
 
+  // Debug the Daily room URL
+  useEffect(() => {
+    console.log('CVI Modal: Daily room URL:', dailyRoomUrl)
+    console.log('CVI Modal: DailyProvider about to render')
+    
+    // Validate the URL
+    if (!dailyRoomUrl) {
+      console.error('CVI Modal: No Daily room URL provided')
+      setErrorMessage('No video call URL provided')
+      setHasError(true)
+      return
+    }
+
+    try {
+      const url = new URL(dailyRoomUrl)
+      console.log('CVI Modal: URL validation passed:', url.hostname)
+    } catch (e) {
+      console.error('CVI Modal: Invalid URL format:', e)
+      setErrorMessage('Invalid video call URL format')
+      setHasError(true)
+      return
+    }
+  }, [dailyRoomUrl])
+
   const handleConversationEnd = (conversationTranscript?: string) => {
     console.log('CVI Modal: Conversation ended with transcript:', conversationTranscript?.substring(0, 100))
     setTranscript(conversationTranscript || '')
@@ -67,10 +91,30 @@ export function CviInterfaceModal({
 
   const isExam = conversationType === 'exam'
 
-  // Debug the Daily room URL
+  // Check for basic browser support
   useEffect(() => {
-    console.log('CVI Modal: Daily room URL:', dailyRoomUrl)
-  }, [dailyRoomUrl])
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error('CVI Modal: Browser does not support getUserMedia')
+      setErrorMessage('Your browser does not support video calls. Please use a modern browser like Chrome, Firefox, or Safari.')
+      setHasError(true)
+      return
+    }
+
+    // Test if we can access media devices
+    navigator.mediaDevices.enumerateDevices()
+      .then(devices => {
+        const hasAudio = devices.some(device => device.kind === 'audioinput')
+        const hasVideo = devices.some(device => device.kind === 'videoinput')
+        console.log('CVI Modal: Media devices available:', { hasAudio, hasVideo })
+        
+        if (!hasAudio && !hasVideo) {
+          console.warn('CVI Modal: No audio or video devices found')
+        }
+      })
+      .catch(error => {
+        console.error('CVI Modal: Error enumerating devices:', error)
+      })
+  }, [])
 
   // Error state
   if (hasError) {
@@ -144,6 +188,23 @@ export function CviInterfaceModal({
                 Complete & Continue
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Don't render DailyProvider if we don't have a valid URL
+  if (!dailyRoomUrl) {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <Card className="w-full max-w-2xl bg-card shadow-2xl">
+          <CardContent className="p-8 text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+            <h3 className="text-lg font-semibold mb-2">Preparing session...</h3>
+            <p className="text-muted-foreground mb-4">
+              Setting up your video call
+            </p>
           </CardContent>
         </Card>
       </div>
