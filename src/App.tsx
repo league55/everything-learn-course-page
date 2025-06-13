@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { ThemeProvider } from '@/providers/theme-provider'
 import { AuthProvider } from '@/providers/auth-provider'
 import { ProtectedRoute } from '@/components/auth/protected-route'
@@ -15,12 +15,12 @@ function App() {
       <AuthProvider>
         <Router>
           <Routes>
-            {/* Auth routes - no sidebar */}
+            {/* Auth routes - no protection needed */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             
-            {/* Course learning - full screen layout */}
+            {/* Course learning - protected route */}
             <Route 
               path="/courses/:courseId/learn" 
               element={
@@ -28,6 +28,18 @@ function App() {
                   <LearnCoursePage />
                 </ProtectedRoute>
               } 
+            />
+            
+            {/* Default redirect - you can customize this based on your needs */}
+            <Route 
+              path="/" 
+              element={<Navigate to="/login" replace />} 
+            />
+            
+            {/* Catch all route - redirect to login */}
+            <Route 
+              path="*" 
+              element={<Navigate to="/login" replace />} 
             />
           </Routes>
           <Toaster />

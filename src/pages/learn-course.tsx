@@ -8,7 +8,7 @@ import { CourseContent } from '@/components/course/course-content'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
-import { ArrowLeft, Loader2, Search, Settings } from 'lucide-react'
+import { ArrowLeft, Loader2, Search, Settings, AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -21,7 +21,7 @@ interface CourseData {
 export function LearnCoursePage() {
   const { courseId } = useParams<{ courseId: string }>()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { toast } = useToast()
 
   const [courseData, setCourseData] = useState<CourseData | null>(null)
@@ -40,17 +40,88 @@ export function LearnCoursePage() {
 
   useEffect(() => {
     const loadCourseData = async () => {
-      if (!courseId || !user) return
+      if (!courseId) {
+        setError('No course ID provided')
+        setLoading(false)
+        return
+      }
+
+      if (authLoading) {
+        // Still checking authentication, wait
+        return
+      }
+
+      if (!user) {
+        setError('You must be logged in to access this course')
+        setLoading(false)
+        return
+      }
 
       try {
         setLoading(true)
+        setError(null)
+        
+        console.log('Loading course data for:', courseId)
         
         // Load course configuration
         const courses = await dbOperations.getCourseConfigurations()
         const configuration = courses.find(c => c.id === courseId)
         
         if (!configuration) {
-          throw new Error('Course not found')
+          // Try to get all courses to see if this is a public course
+          const allCourses = await dbOperations.getAllCourses()
+          const publicCourse = allCourses.find(c => c.id === courseId)
+          
+          if (!publicCourse) {
+            throw new Error('Course not found')
+          }
+          
+          // Use the public course configuration
+          const publicConfiguration = {
+            id: publicCourse.id,
+            topic: publicCourse.topic,
+            context: publicCourse.context,
+            depth: publicCourse.depth,
+            user_id: publicCourse.user_id,
+            created_at: publicCourse.created_at,
+            updated_at: publicCourse.updated_at
+          }
+          
+          // Load syllabus
+          const syllabus = await dbOperations.getSyllabus(courseId)
+          
+          if (!syllabus || syllabus.status !== 'completed') {
+            throw new Error('Course syllabus is not ready')
+          }
+
+          // Check if user is enrolled, if not, enroll them
+          let enrollment: UserEnrollment
+          const enrolledCourses = await dbOperations.getUserEnrolledCourses()
+          const existingEnrollment = enrolledCourses.find(ec => ec.id === courseId)?.user_enrollment
+          
+          if (!existingEnrollment) {
+            console.log('User not enrolled, enrolling in course...')
+            enrollment = await dbOperations.enrollInCourse(courseId)
+            toast({
+              title: "Enrolled Successfully",
+              description: "You have been enrolled in this course.",
+              duration: 3000,
+            })
+          } else {
+            enrollment = existingEnrollment
+          }
+
+          setCourseData({
+            configuration: publicConfiguration,
+            syllabus,
+            enrollment
+          })
+
+          // Set initial position based on enrollment progress
+          setSelectedModuleIndex(enrollment.current_module_index || 0)
+          setSelectedTopicIndex(0)
+          
+          return
         }
 
         // Load syllabus
@@ -65,18 +136,31 @@ export function LearnCoursePage() {
         const enrollment = enrolledCourses.find(ec => ec.id === courseId)?.user_enrollment
         
         if (!enrollment) {
-          throw new Error('You are not enrolled in this course')
+          // Auto-enroll the user if they're accessing their own course
+          if (configuration.user_id === user.id) {
+            console.log('Auto-enrolling course owner...')
+            const newEnrollment = await dbOperations.enrollInCourse(courseId)
+            setCourseData({
+              configuration,
+              syllabus,
+              enrollment: newEnrollment
+            })
+            setSelectedModuleIndex(0)
+            setSelectedTopicIndex(0)
+          } else {
+            throw new Error('You are not enrolled in this course')
+          }
+        } else {
+          setCourseData({
+            configuration,
+            syllabus,
+            enrollment
+          })
+
+          // Set initial position based on enrollment progress
+          setSelectedModuleIndex(enrollment.current_module_index || 0)
+          setSelectedTopicIndex(0)
         }
-
-        setCourseData({
-          configuration,
-          syllabus,
-          enrollment
-        })
-
-        // Set initial position based on enrollment progress
-        setSelectedModuleIndex(enrollment.current_module_index || 0)
-        setSelectedTopicIndex(0)
 
       } catch (err) {
         console.error('Failed to load course data:', err)
@@ -87,7 +171,7 @@ export function LearnCoursePage() {
     }
 
     loadCourseData()
-  }, [courseId, user])
+  }, [courseId, user, authLoading, toast])
 
   // Load topic content and check for ongoing generation jobs
   useEffect(() => {
@@ -327,12 +411,20 @@ export function LearnCoursePage() {
     }
   }
 
-  if (loading) {
+  // Show loading while checking auth or loading course
+  if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading course...</span>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="text-center">
+            <h3 className="text-lg font-semibold">
+              {authLoading ? 'Checking authentication...' : 'Loading course...'}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {authLoading ? 'Please wait while we verify your session' : 'Preparing your learning experience'}
+            </p>
+          </div>
         </div>
       </div>
     )
@@ -340,19 +432,29 @@ export function LearnCoursePage() {
 
   if (error || !courseData) {
     return (
-      <div className="min-h-screen p-6">
+      <div className="min-h-screen p-6 bg-background">
         <div className="max-w-4xl mx-auto">
-          <Alert variant="destructive">
-            <AlertDescription>{error || 'Course data not available'}</AlertDescription>
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {error || 'Course data not available'}
+            </AlertDescription>
           </Alert>
-          <Button 
-            className="mt-4" 
-            onClick={() => navigate('/courses')}
-            variant="outline"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Courses
-          </Button>
+          <div className="flex gap-4">
+            <Button 
+              onClick={() => navigate('/login')}
+              variant="default"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Login
+            </Button>
+            <Button 
+              onClick={() => window.location.reload()}
+              variant="outline"
+            >
+              Try Again
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -392,10 +494,10 @@ export function LearnCoursePage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/courses')}
+                onClick={() => navigate('/login')}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Courses
+                Back to Login
               </Button>
             </div>
             

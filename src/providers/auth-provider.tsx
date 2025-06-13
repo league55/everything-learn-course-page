@@ -7,6 +7,7 @@ interface AuthContextType {
   session: Session | null
   loading: boolean
   signOut: () => Promise<void>
+  refreshSession: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -20,48 +21,119 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const refreshSession = async () => {
+    try {
+      const { data: { session: refreshedSession }, error } = await supabase.auth.refreshSession()
+      if (error) {
+        console.warn('Failed to refresh session:', error)
+        return
+      }
+      
+      if (refreshedSession) {
+        setSession(refreshedSession)
+        setUser(refreshedSession.user)
+      }
+    } catch (error) {
+      console.warn('Error refreshing session:', error)
+    }
+  }
+
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      const { data: { session: initialSession } } = await supabase.auth.getSession()
-      setSession(initialSession)
-      setUser(initialSession?.user ?? null)
-      setLoading(false)
+    let mounted = true
+
+    const initializeAuth = async () => {
+      try {
+        // First, try to get the current session (this will pick up stored tokens)
+        const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession()
+        
+        if (sessionError) {
+          console.warn('Error getting initial session:', sessionError)
+        }
+
+        if (mounted) {
+          if (initialSession) {
+            // Check if the session is still valid
+            const now = Math.floor(Date.now() / 1000)
+            const expiresAt = initialSession.expires_at || 0
+            
+            if (expiresAt > now) {
+              // Session is still valid
+              setSession(initialSession)
+              setUser(initialSession.user)
+            } else {
+              // Session expired, try to refresh
+              console.log('Session expired, attempting to refresh...')
+              await refreshSession()
+            }
+          } else {
+            // No session found
+            setSession(null)
+            setUser(null)
+          }
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error)
+        if (mounted) {
+          setSession(null)
+          setUser(null)
+          setLoading(false)
+        }
+      }
     }
 
-    getInitialSession()
+    initializeAuth()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session)
-        setUser(session?.user ?? null)
+        console.log('Auth state changed:', event, session?.user?.email)
         
-        if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setSession(null)
+        if (mounted) {
+          setSession(session)
+          setUser(session?.user ?? null)
+          
+          if (event === 'SIGNED_OUT') {
+            setUser(null)
+            setSession(null)
+          }
+          
+          // Only set loading to false after the initial session check
+          if (event !== 'INITIAL_SESSION') {
+            setLoading(false)
+          }
         }
-        
-        setLoading(false)
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const signOut = async () => {
     setLoading(true)
-    await supabase.auth.signOut()
-    setUser(null)
-    setSession(null)
-    setLoading(false)
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Error signing out:', error)
+      }
+    } catch (error) {
+      console.error('Error during sign out:', error)
+    } finally {
+      setUser(null)
+      setSession(null)
+      setLoading(false)
+    }
   }
 
   const value = {
     user,
     session,
     loading,
-    signOut
+    signOut,
+    refreshSession
   }
 
   return (

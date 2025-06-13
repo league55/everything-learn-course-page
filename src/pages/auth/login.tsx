@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,13 +26,33 @@ export function LoginPage() {
 
   const navigate = useNavigate()
   const location = useLocation()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
+
+  // Get the intended destination from location state
+  const from = location.state?.from?.pathname || '/courses'
 
   // Redirect if already authenticated
+  useEffect(() => {
+    if (!authLoading && user) {
+      console.log('User already authenticated, redirecting to:', from)
+      navigate(from, { replace: true })
+    }
+  }, [user, authLoading, navigate, from])
+
+  // Don't render the form if we're still checking auth or user is already logged in
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Checking authentication...</span>
+        </div>
+      </div>
+    )
+  }
+
   if (user) {
-    const from = location.state?.from?.pathname || '/profile'
-    navigate(from, { replace: true })
-    return null
+    return null // Will redirect via useEffect
   }
 
   const handleInputChange = (field: keyof LoginFormData, value: string) => {
@@ -46,19 +66,19 @@ export function LoginPage() {
     setError(null)
 
     try {
-      const { user, error } = await authOperations.signIn(formData)
+      const { user: signedInUser, error } = await authOperations.signIn(formData)
       
       if (error) {
         setError(error.message)
         return
       }
 
-      if (user) {
-        // Redirect to the page they were trying to access, or profile
-        const from = location.state?.from?.pathname || '/profile'
-        navigate(from, { replace: true })
+      if (signedInUser) {
+        console.log('Sign in successful, redirecting to:', from)
+        // Navigation will be handled by the useEffect hook
       }
     } catch (err) {
+      console.error('Sign in error:', err)
       setError('An unexpected error occurred. Please try again.')
     } finally {
       setLoading(false)
@@ -87,6 +107,11 @@ export function LoginPage() {
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
           <CardDescription>
             Sign in to your Orion Path account
+            {from !== '/courses' && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                You'll be redirected to your course after signing in
+              </div>
+            )}
           </CardDescription>
         </CardHeader>
 
