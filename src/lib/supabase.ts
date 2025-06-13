@@ -651,5 +651,48 @@ export const dbOperations = {
     if (error) {
       throw new Error(`Failed to delete file: ${error.message}`)
     }
-  }
+  },
+  
+    // Tavus CVI operations
+    async initiateTavusCviSession(
+      courseId: string,
+      userId: string,
+      userName: string,
+      courseDepth: number,
+      conversationType: 'practice' | 'exam',
+      courseTopic: string,
+      moduleSummary: string
+    ): Promise<{ conversation_id: string; conversation_url: string; replica_id: string; status: string }> {
+      const { data, error } = await supabase.functions.invoke('tavus-cvi-initiate', {
+        body: {
+          courseId,
+          userId,
+          userName,
+          courseDepth,
+          conversationType,
+          courseTopic,
+          moduleSummary
+        }
+      })
+  
+      if (error) {
+        throw new Error(`Failed to initiate CVI session: ${error.message}`)
+      }
+  
+      return data
+    },
+  
+    async getVideoConversations(userId?: string): Promise<VideoConversation[]> {
+      const { data, error } = await supabase
+        .from('video_conversations')
+        .select('*')
+        .eq(userId ? 'user_id' : 'user_id', userId || (await supabase.auth.getUser()).data.user?.id)
+        .order('created_at', { ascending: false })
+  
+      if (error) {
+        throw new Error(`Failed to fetch video conversations: ${error.message}`)
+      }
+  
+      return data || []
+    },
 }
