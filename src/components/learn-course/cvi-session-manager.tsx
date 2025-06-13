@@ -62,6 +62,13 @@ export function useCviSession(
 
       console.log('CVI session initiated successfully:', response)
 
+      // Validate the conversation URL
+      if (!response.conversation_url) {
+        throw new Error('No conversation URL received from Tavus')
+      }
+
+      console.log('Setting Daily room URL:', response.conversation_url)
+
       // Set the Daily room URL from the Tavus response
       setDailyRoomUrl(response.conversation_url)
       setShowFinalTestButton(false)
@@ -126,6 +133,7 @@ export function useCviSession(
   }
 
   const handleCloseCvi = () => {
+    console.log('Closing CVI modal')
     setShowCviModal(false)
     setDailyRoomUrl(null)
     setShowFinalTestButton(true) // Allow them to try again

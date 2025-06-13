@@ -67,6 +67,11 @@ export function CviInterfaceModal({
 
   const isExam = conversationType === 'exam'
 
+  // Debug the Daily room URL
+  useEffect(() => {
+    console.log('CVI Modal: Daily room URL:', dailyRoomUrl)
+  }, [dailyRoomUrl])
+
   // Error state
   if (hasError) {
     return (
@@ -138,26 +143,6 @@ export function CviInterfaceModal({
               <Button onClick={handleManualComplete} className="flex-1">
                 Complete & Continue
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Connecting state
-  if (isConnecting) {
-    return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <Card className="w-full max-w-2xl bg-card shadow-2xl">
-          <CardContent className="p-8 text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-            <h3 className="text-lg font-semibold mb-2">Connecting to your expert...</h3>
-            <p className="text-muted-foreground mb-4">
-              Please allow camera and microphone access when prompted
-            </p>
-            <div className="text-xs text-muted-foreground">
-              This may take up to 30 seconds
             </div>
           </CardContent>
         </Card>
