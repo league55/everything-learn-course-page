@@ -1,20 +1,8 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { 
-  useCallFrame, 
-  useParticipantIds, 
-  useLocalParticipant, 
-  useParticipant,
-  useDailyEvent,
-  useNetwork,
-  useDevices,
-  usePermissions,
-  useAudioLevel,
-  DailyEvent
-} from '@daily-co/daily-react'
+import { useEffect, useState, useCallback } from 'react'
+import { useCallFrame, useParticipantIds, useLocalParticipant, useParticipant } from '@daily-co/daily-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { 
   Mic, 
   MicOff, 
@@ -23,12 +11,7 @@ import {
   Phone, 
   PhoneOff,
   Loader2,
-  AlertCircle,
-  RefreshCw,
-  Wifi,
-  WifiOff,
-  Volume2,
-  VolumeX
+  AlertCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -50,22 +33,15 @@ export function DailyVideo({
   const callFrame = useCallFrame()
   const participantIds = useParticipantIds()
   const localParticipant = useLocalParticipant()
-  const network = useNetwork()
-  const devices = useDevices()
-  const permissions = usePermissions()
-  const localAudioLevel = useAudioLevel(localParticipant?.session_id || '')
-  
   const [isConnecting, setIsConnecting] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoOff, setIsVideoOff] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
-  const mountedRef = useRef(true)
 
   // Get the first remote participant (AI expert)
   const remoteParticipantId = participantIds.find(id => id !== 'local')
-  const remoteParticipant = useParticipant(remoteParticipantId || '')
+  const remoteParticipant = useParticipant(remoteParticipantId)
 
   // Stable callback using useCallback
   const handleConversationEnd = useCallback((transcript?: string) => {
@@ -75,50 +51,33 @@ export function DailyVideo({
 
   const handleError = useCallback((error: string) => {
     console.error('Daily Video error:', error)
-    if (!mountedRef.current) return
     setConnectionError(error)
     onError(error)
   }, [onError])
 
-  // Use Daily.co's event system
-  useDailyEvent('joined-meeting' as DailyEvent, useCallback(() => {
+  // Event handlers
+  const handleJoinedMeeting = useCallback(() => {
     console.log('Successfully joined Daily meeting')
-    if (!mountedRef.current) return
     setIsConnecting(false)
     setIsConnected(true)
     onConnected()
-  }, [onConnected]))
+  }, [onConnected])
 
-  useDailyEvent('left-meeting' as DailyEvent, useCallback(() => {
+  const handleLeftMeeting = useCallback(() => {
     console.log('Left Daily meeting')
-    if (!mountedRef.current) return
     setIsConnected(false)
     handleConversationEnd()
-  }, [handleConversationEnd]))
+  }, [handleConversationEnd])
 
-  useDailyEvent('error' as DailyEvent, useCallback((error: any) => {
+  const handleCallError = useCallback((error: any) => {
     console.error('Daily call error:', error)
-    if (!mountedRef.current) return
     setIsConnecting(false)
-    
-    // Handle specific Daily.co error types
-    let errorMessage = 'Failed to connect to video call'
-    if (error.type === 'permission-denied') {
-      errorMessage = 'Camera or microphone access was denied. Please check your permissions.'
-    } else if (error.type === 'network-error') {
-      errorMessage = 'Network connection error. Please check your internet connection.'
-    } else if (error.type === 'device-error') {
-      errorMessage = 'Error accessing camera or microphone. Please check your devices.'
-    } else if (error.message) {
-      errorMessage = error.message
-    }
-    
-    handleError(errorMessage)
-  }, [handleError]))
+    handleError(`Call error: ${error.message || 'Failed to connect to video call'}`)
+  }, [handleError])
 
   // Initialize call when component mounts
   useEffect(() => {
-    mountedRef.current = true
+    let joinTimeout: NodeJS.Timeout
 
     const initializeCall = async () => {
       try {
@@ -129,20 +88,23 @@ export function DailyVideo({
           return
         }
 
-        // Check permissions first
-        if (!permissions.canSendAudio || !permissions.canSendVideo) {
-          throw new Error('Camera and microphone permissions are required')
-        }
-
-        // Check for available devices
-        if (!devices.cameras.length || !devices.microphones.length) {
-          throw new Error('No camera or microphone found')
-        }
-
         // Clear any existing state
         setConnectionError(null)
         setIsConnecting(true)
         setIsConnected(false)
+
+        // Add event listeners
+        callFrame.on('joined-meeting', handleJoinedMeeting)
+        callFrame.on('left-meeting', handleLeftMeeting)
+        callFrame.on('error', handleCallError)
+
+        // Set a timeout for connection
+        joinTimeout = setTimeout(() => {
+          if (!isConnected) {
+            console.error('Connection timeout - failed to join within 30 seconds')
+            handleError('Connection timeout. Please check your internet connection and try again.')
+          }
+        }, 30000) // 30 second timeout
 
         console.log('Attempting to join Daily call...')
         
@@ -157,8 +119,8 @@ export function DailyVideo({
 
       } catch (error) {
         console.error('Failed to initialize call:', error)
-        if (!mountedRef.current) return
         setIsConnecting(false)
+        if (joinTimeout) clearTimeout(joinTimeout)
         handleError(`Failed to join conversation: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
     }
@@ -169,12 +131,18 @@ export function DailyVideo({
 
     // Cleanup function
     return () => {
-      mountedRef.current = false
       console.log('Cleaning up Daily Video component')
+      if (joinTimeout) clearTimeout(joinTimeout)
       
       if (callFrame) {
-        console.log('Leaving call during cleanup')
+        console.log('Removing event listeners and leaving call during cleanup')
         try {
+          // Remove all event listeners
+          callFrame.off('joined-meeting', handleJoinedMeeting)
+          callFrame.off('left-meeting', handleLeftMeeting)
+          callFrame.off('error', handleCallError)
+          
+          // Leave the call if connected
           if (isConnected) {
             callFrame.leave()
           }
@@ -183,7 +151,7 @@ export function DailyVideo({
         }
       }
     }
-  }, [callFrame, roomUrl, handleError, isConnected, permissions, devices])
+  }, [callFrame, roomUrl, handleJoinedMeeting, handleLeftMeeting, handleCallError, handleError, isConnected])
 
   const toggleMute = () => {
     if (!callFrame) return
@@ -208,16 +176,6 @@ export function DailyVideo({
     callFrame.leave()
   }
 
-  const retryConnection = () => {
-    if (retryCount >= 3) {
-      handleError('Maximum retry attempts reached. Please refresh the page.')
-      return
-    }
-    setRetryCount(prev => prev + 1)
-    setConnectionError(null)
-    setIsConnecting(true)
-  }
-
   // Show error state
   if (connectionError) {
     return (
@@ -228,15 +186,9 @@ export function DailyVideo({
           <p className="text-muted-foreground mb-4 text-sm">
             {connectionError}
           </p>
-          <div className="flex gap-2">
-            <Button onClick={retryConnection} className="flex-1">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
-            </Button>
-            <Button variant="outline" onClick={() => window.location.reload()} className="flex-1">
-              Refresh Page
-            </Button>
-          </div>
+          <Button onClick={() => window.location.reload()} className="w-full">
+            Try Again
+          </Button>
         </Card>
       </div>
     )
@@ -269,64 +221,22 @@ export function DailyVideo({
             {conversationType === 'exam' ? 'Oral Examination' : 'Practice Session'}
           </Badge>
           {isConnected && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-green-400 text-sm">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                Live
-              </div>
-              {network && (
-                <div className="flex items-center gap-1 text-sm">
-                  {network.quality === 'good' ? (
-                    <Wifi className="h-4 w-4 text-green-400" />
-                  ) : (
-                    <WifiOff className="h-4 w-4 text-yellow-400" />
-                  )}
-                  <span className={cn(
-                    network.quality === 'good' ? 'text-green-400' : 'text-yellow-400'
-                  )}>
-                    {network.quality === 'good' ? 'Good' : 'Poor'} Connection
-                  </span>
-                </div>
-              )}
+            <div className="flex items-center gap-1 text-green-400 text-sm">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              Live
             </div>
           )}
         </div>
         
-        <div className="flex items-center gap-2">
-          <Button 
-            onClick={toggleMute}
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "flex items-center gap-2",
-              isMuted && "text-destructive"
-            )}
-          >
-            {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            {isMuted ? 'Unmute' : 'Mute'}
-          </Button>
-          <Button 
-            onClick={toggleVideo}
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "flex items-center gap-2",
-              isVideoOff && "text-destructive"
-            )}
-          >
-            {isVideoOff ? <VideoOff className="h-4 w-4" /> : <Video className="h-4 w-4" />}
-            {isVideoOff ? 'Start Video' : 'Stop Video'}
-          </Button>
-          <Button 
-            onClick={leaveCall}
-            variant="destructive"
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <PhoneOff className="h-4 w-4" />
-            End Session
-          </Button>
-        </div>
+        <Button 
+          onClick={leaveCall}
+          variant="destructive"
+          size="sm"
+          className="flex items-center gap-2"
+        >
+          <PhoneOff className="h-4 w-4" />
+          End Session
+        </Button>
       </header>
 
       {/* Main Content */}
@@ -338,57 +248,126 @@ export function DailyVideo({
               <video
                 autoPlay
                 playsInline
-                muted
+                ref={(el) => {
+                  if (el && remoteParticipant.tracks?.video?.persistentTrack) {
+                    el.srcObject = new MediaStream([remoteParticipant.tracks.video.persistentTrack])
+                  }
+                }}
                 className="w-full h-full object-cover"
-                id={`remote-video-${remoteParticipant.session_id}`}
               />
-              <div className="absolute bottom-4 left-4 right-4">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium">AI Expert</span>
-                  {remoteParticipant.tracks?.audio?.state === 'playable' && (
-                    <div className="flex items-center gap-1">
-                      <Volume2 className="h-4 w-4" />
-                      <Progress value={50} className="w-20" />
-                    </div>
-                  )}
-                </div>
+              <audio
+                autoPlay
+                playsInline
+                ref={(el) => {
+                  if (el && remoteParticipant.tracks?.audio?.persistentTrack) {
+                    el.srcObject = new MediaStream([remoteParticipant.tracks.audio.persistentTrack])
+                  }
+                }}
+              />
+              <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 px-3 py-1 rounded text-sm font-medium">
+                AI Expert
+              </div>
+              <div className="absolute top-4 right-4">
+                <Badge variant="outline" className="bg-black bg-opacity-70">
+                  {conversationType === 'exam' ? 'Examiner' : 'Mentor'}
+                </Badge>
               </div>
             </Card>
           )}
 
-          {/* Local Participant */}
-          <Card className="relative bg-gray-800 border-gray-700 overflow-hidden aspect-video">
-            <video
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-              id={`local-video-${localParticipant?.session_id}`}
-            />
-            <div className="absolute bottom-4 left-4 right-4">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium">You</span>
-                {typeof localAudioLevel === 'number' && (
-                  <div className="flex items-center gap-1">
-                    {isMuted ? (
-                      <VolumeX className="h-4 w-4 text-destructive" />
-                    ) : (
-                      <Volume2 className="h-4 w-4" />
-                    )}
-                    <Progress 
-                      value={isMuted ? 0 : localAudioLevel * 100} 
-                      className={cn(
-                        "w-20",
-                        isMuted && "opacity-50"
-                      )} 
-                    />
-                  </div>
+          {/* Local Participant (User) */}
+          {localParticipant && (
+            <Card className="relative bg-gray-800 border-gray-700 overflow-hidden aspect-video">
+              <video
+                autoPlay
+                playsInline
+                muted
+                ref={(el) => {
+                  if (el && localParticipant.tracks?.video?.persistentTrack) {
+                    el.srcObject = new MediaStream([localParticipant.tracks.video.persistentTrack])
+                  }
+                }}
+                className={cn(
+                  "w-full h-full object-cover",
+                  isVideoOff && "hidden"
+                )}
+              />
+              {isVideoOff && (
+                <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                  <VideoOff className="h-8 w-8 text-gray-400" />
+                </div>
+              )}
+              <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 px-3 py-1 rounded text-sm font-medium">
+                You
+              </div>
+              <div className="absolute top-4 right-4 flex gap-2">
+                {isMuted && (
+                  <Badge variant="destructive" className="bg-red-600">
+                    <MicOff className="h-3 w-3 mr-1" />
+                    Muted
+                  </Badge>
+                )}
+                {isVideoOff && (
+                  <Badge variant="secondary" className="bg-gray-600">
+                    <VideoOff className="h-3 w-3 mr-1" />
+                    Camera Off
+                  </Badge>
                 )}
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
+
+          {/* Show message if no participants yet */}
+          {!isConnected && participantIds.length === 0 && (
+            <Card className="col-span-full bg-gray-800 border-gray-700 p-8 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+              <h3 className="text-lg font-semibold mb-2">Waiting for expert to join...</h3>
+              <p className="text-gray-400">Your AI expert will appear here shortly</p>
+            </Card>
+          )}
         </div>
       </main>
+
+      {/* Controls */}
+      <footer className="bg-gray-800 p-4 border-t border-gray-700">
+        <div className="flex justify-center items-center gap-4">
+          <Button
+            onClick={toggleMute}
+            variant={isMuted ? "destructive" : "secondary"}
+            size="lg"
+            className="rounded-full h-12 w-12"
+            disabled={!isConnected}
+          >
+            {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </Button>
+
+          <Button
+            onClick={toggleVideo}
+            variant={isVideoOff ? "destructive" : "secondary"}
+            size="lg"
+            className="rounded-full h-12 w-12"
+            disabled={!isConnected}
+          >
+            {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+          </Button>
+
+          <Button
+            onClick={leaveCall}
+            variant="destructive"
+            size="lg"
+            className="rounded-full h-12 w-12"
+          >
+            <Phone className="h-5 w-5" />
+          </Button>
+        </div>
+        
+        <div className="text-center mt-4 text-sm text-gray-400">
+          {conversationType === 'exam' 
+            ? 'Answer questions clearly and take your time to explain your thoughts'
+            : 'Relax and enjoy discussing what you\'ve learned'
+          }
+        </div>
+      </footer>
     </div>
   )
 }
