@@ -100,11 +100,23 @@ export function useDailyCall({
 
         console.log('Attempting to join Daily call...', { roomUrl })
         
-        // Join the meeting
+        // Join the meeting with additional configuration for WebContainer compatibility
         await callFrame.join({ 
           url: roomUrl,
           startAudioOff: false,
-          startVideoOff: false
+          startVideoOff: false,
+          // Add configuration to help with CORS issues in development
+          dailyConfig: {
+            // Allow iframe communication from any origin in development
+            experimentalChromeVideoMuteLightOff: true,
+            // Disable some features that might cause CORS issues
+            enableScreenShare: false,
+            enableChat: false,
+            enablePeopleUI: false,
+            enableNetworkUI: false,
+            // Set custom CSS to ensure iframe loads properly
+            customLayout: true
+          }
         })
 
         console.log('Join request sent successfully')
@@ -113,7 +125,13 @@ export function useDailyCall({
         console.error('Failed to initialize call:', error)
         setIsConnecting(false)
         if (joinTimeout) clearTimeout(joinTimeout)
-        handleError(`Failed to join conversation: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        
+        // Check if it's a CORS-related error
+        if (error instanceof Error && error.message.includes('postMessage')) {
+          handleError('Video call blocked by browser security. Please try refreshing the page or using a different browser.')
+        } else {
+          handleError(`Failed to join conversation: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
       }
     }
 
@@ -177,4 +195,4 @@ export function useDailyCall({
     toggleVideo,
     leaveCall
   }
-} 
+}

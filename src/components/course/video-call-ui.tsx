@@ -4,8 +4,10 @@ import { VideoCallControls } from './video-call/controls'
 import { ParticipantVideo } from './video-call/participant-video'
 import { LoadingState } from './video-call/loading-state'
 import { ErrorState } from './video-call/error-state'
+import { IframeVideoFallback } from './iframe-video-fallback'
 import { Card } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 interface VideoCallUIProps {
   roomUrl: string
@@ -22,6 +24,8 @@ export function VideoCallUI({
   onError,
   onConnected
 }: VideoCallUIProps) {
+  const [showFallback, setShowFallback] = useState(false)
+  
   const {
     isConnecting,
     isConnected,
@@ -36,12 +40,44 @@ export function VideoCallUI({
   } = useDailyCall({
     roomUrl,
     onConnected,
-    onError,
+    onError: (error) => {
+      // If it's a CORS error, show fallback instead of error state
+      if (error.includes('postMessage') || error.includes('browser security')) {
+        setShowFallback(true)
+      } else {
+        onError(error)
+      }
+    },
     onConversationEnd
   })
 
-  // Show error state
-  if (connectionError) {
+  // Show fallback after 10 seconds if still connecting
+  useEffect(() => {
+    if (isConnecting) {
+      const timer = setTimeout(() => {
+        if (isConnecting && !isConnected) {
+          setShowFallback(true)
+        }
+      }, 10000)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [isConnecting, isConnected])
+
+  // Show fallback if CORS issues detected
+  if (showFallback) {
+    return (
+      <IframeVideoFallback
+        roomUrl={roomUrl}
+        conversationType={conversationType}
+        onConversationEnd={onConversationEnd}
+        onError={onError}
+      />
+    )
+  }
+
+  // Show error state for non-CORS errors
+  if (connectionError && !connectionError.includes('postMessage')) {
     return (
       <ErrorState
         error={connectionError}
@@ -111,4 +147,4 @@ export function VideoCallUI({
       />
     </div>
   )
-} 
+}
