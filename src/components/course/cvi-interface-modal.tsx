@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { DailyProvider } from '@daily-co/daily-react'
-import { VideoCallUI } from './video-call-ui'
+import { DailyVideo } from './daily-video-component'
 import { 
   X, 
   Video, 
@@ -97,14 +97,15 @@ export function CviInterfaceModal({
     }
   }, [])
 
-  const handleConversationEnd = useCallback(() => {
+  const handleConversationEnd = useCallback((conversationTranscript?: string) => {
     if (hasCompletedRef.current || isClosingRef.current || !componentMountedRef.current) {
       console.log('CVI Modal: Ignoring conversation end - already completed or closing')
       return
     }
     
-    console.log('CVI Modal: Conversation ended')
+    console.log('CVI Modal: Conversation ended with transcript:', conversationTranscript?.substring(0, 100))
     hasCompletedRef.current = true
+    setTranscript(conversationTranscript || '')
     setSessionEnded(true)
     setIsConnecting(false)
   }, [])
@@ -260,7 +261,7 @@ export function CviInterfaceModal({
 
       {/* Daily Provider wraps the video component */}
       <DailyProvider>
-        <VideoCallUI
+        <DailyVideo
           roomUrl={dailyRoomUrl}
           conversationType={conversationType}
           onConversationEnd={handleConversationEnd}
