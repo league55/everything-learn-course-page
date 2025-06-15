@@ -152,6 +152,7 @@ export function useCviSession(
     
     // Show congratulations modal for manual close
     setShowCongratulationsModal(true)
+    setCourseReadyForCompletion(true)
   }
 
   const handleCongratulationsClose = () => {
