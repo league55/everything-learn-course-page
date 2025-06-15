@@ -7,6 +7,7 @@ import type { CourseData } from './course-data-loader'
 
 interface UseCviSessionResult {
   showCviModal: boolean
+  showCongratulationsModal: boolean
   conversationUrl: string | null
   conversationId: string | null
   cviConversationType: 'practice' | 'exam'
@@ -14,6 +15,8 @@ interface UseCviSessionResult {
   handleInitiateTest: (conversationType: 'practice' | 'exam') => Promise<void>
   handleCviComplete: (transcript?: string) => Promise<void>
   handleCloseCvi: () => void
+  handleCongratulationsClose: () => void
+  handleCongratulationsComplete: () => void
 }
 
 export function useCviSession(
@@ -23,6 +26,7 @@ export function useCviSession(
   setCourseReadyForCompletion: (ready: boolean) => void
 ): UseCviSessionResult {
   const [showCviModal, setShowCviModal] = useState(false)
+  const [showCongratulationsModal, setShowCongratulationsModal] = useState(false)
   const [conversationUrl, setConversationUrl] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [cviConversationType, setCviConversationType] = useState<'practice' | 'exam'>('practice')
@@ -109,7 +113,9 @@ export function useCviSession(
         true // Mark as completed
       )
 
+      // Close all modals
       setShowCviModal(false)
+      setShowCongratulationsModal(false)
       setConversationUrl(null)
       setConversationId(null)
       setCourseReadyForCompletion(false)
@@ -137,26 +143,41 @@ export function useCviSession(
   }
 
   const handleCloseCvi = () => {
-    console.log('Closing CVI modal')
+    console.log('User manually closed CVI modal - showing congratulations')
+    
+    // Close the CVI modal
     setShowCviModal(false)
     setConversationUrl(null)
     setConversationId(null)
     
-    // If the course is ready for completion, trigger the completion flow
-    if (courseReadyForCompletion) {
-      console.log('Course ready for completion, triggering completion flow')
-      handleCviComplete()
-    }
+    // Show congratulations modal for manual close
+    setShowCongratulationsModal(true)
+  }
+
+  const handleCongratulationsClose = () => {
+    console.log('User closed congratulations modal without completing')
+    setShowCongratulationsModal(false)
+    
+    // Show the final test button again if they don't want to complete
+    setShowFinalTestButton(true)
+  }
+
+  const handleCongratulationsComplete = () => {
+    console.log('User chose to complete course from congratulations modal')
+    handleCviComplete()
   }
 
   return {
     showCviModal,
+    showCongratulationsModal,
     conversationUrl,
     conversationId,
     cviConversationType,
     isInitiatingCvi,
     handleInitiateTest,
     handleCviComplete,
-    handleCloseCvi
+    handleCloseCvi,
+    handleCongratulationsClose,
+    handleCongratulationsComplete
   }
 }

@@ -17,6 +17,7 @@ import { CourseSidebar } from '@/components/course/course-sidebar'
 import { CourseContent } from '@/components/course/course-content'
 import { FinalTestButton } from '@/components/course/final-test-button'
 import { TavusIframeInterface } from '@/components/course/tavus-iframe-interface'
+import { VideoCallCongratulationsModal } from '@/components/course/video-call-congratulations-modal'
 
 export function LearnCoursePage() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -69,13 +70,16 @@ export function LearnCoursePage() {
   // Manage CVI sessions
   const {
     showCviModal,
+    showCongratulationsModal,
     conversationUrl,
     conversationId,
     cviConversationType,
     isInitiatingCvi,
     handleInitiateTest,
     handleCviComplete,
-    handleCloseCvi
+    handleCloseCvi,
+    handleCongratulationsClose,
+    handleCongratulationsComplete
   } = useCviSession(
     courseData,
     selectedModuleIndex,
@@ -177,6 +181,15 @@ export function LearnCoursePage() {
           conversationType={cviConversationType}
           onClose={handleCloseCvi}
           onComplete={handleCviComplete}
+        />
+      )}
+
+      {/* Congratulations Modal - Shows when user manually closes video call */}
+      {showCongratulationsModal && (
+        <VideoCallCongratulationsModal
+          conversationType={cviConversationType}
+          onClose={handleCongratulationsClose}
+          onComplete={handleCongratulationsComplete}
         />
       )}
     </div>
