@@ -3,16 +3,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { DailyProvider } from '@daily-co/daily-react'
-import { DailyVideo } from './daily-video-component'
+import { VideoCallUI } from './video-call'
 import { 
   X, 
-  Video, 
-  Mic, 
   Loader2,
   AlertTriangle,
   CheckCircle
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface CviInterfaceModalProps {
   dailyRoomUrl: string
@@ -31,7 +28,6 @@ export function CviInterfaceModal({
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [sessionEnded, setSessionEnded] = useState(false)
   const [transcript, setTranscript] = useState<string>('')
-  const [isConnecting, setIsConnecting] = useState(true)
   const [isInitialized, setIsInitialized] = useState(false)
 
   // Use refs to prevent race conditions and track component state
@@ -107,7 +103,6 @@ export function CviInterfaceModal({
     hasCompletedRef.current = true
     setTranscript(conversationTranscript || '')
     setSessionEnded(true)
-    setIsConnecting(false)
   }, [])
 
   const handleError = useCallback((error: string) => {
@@ -119,13 +114,11 @@ export function CviInterfaceModal({
     console.error('CVI Modal Error:', error)
     setErrorMessage(error)
     setHasError(true)
-    setIsConnecting(false)
   }, [])
 
   const handleConnected = useCallback(() => {
     if (!componentMountedRef.current) return
     console.log('Successfully connected to Daily room')
-    setIsConnecting(false)
     setHasError(false)
   }, [])
 
@@ -261,13 +254,15 @@ export function CviInterfaceModal({
 
       {/* Daily Provider wraps the video component */}
       <DailyProvider>
-        <DailyVideo
-          roomUrl={dailyRoomUrl}
-          conversationType={conversationType}
-          onConversationEnd={handleConversationEnd}
-          onError={handleError}
-          onConnected={handleConnected}
-        />
+        {dailyRoomUrl && (
+          <VideoCallUI
+            roomUrl={dailyRoomUrl}
+            conversationType={conversationType}
+            onConversationEnd={handleConversationEnd}
+            onError={handleError}
+            onConnected={handleConnected}
+          />
+        )}
       </DailyProvider>
     </div>
   )

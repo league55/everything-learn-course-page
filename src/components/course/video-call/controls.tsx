@@ -1,64 +1,47 @@
-import { Button } from '@/components/ui/button'
-import { Mic, MicOff, Video, VideoOff, Phone } from 'lucide-react'
+import { useMediaQuery } from '@/hooks/use-media-query'
+import { ControlButtons } from './control-buttons'
 
 interface VideoCallControlsProps {
-  isConnected: boolean
   isMuted: boolean
   isVideoOff: boolean
-  conversationType: 'practice' | 'exam'
-  onToggleMute: () => void
+  onToggleAudio: () => void
   onToggleVideo: () => void
-  onLeaveCall: () => void
+  onEndCall: () => void
 }
 
 export function VideoCallControls({
-  isConnected,
   isMuted,
   isVideoOff,
-  conversationType,
-  onToggleMute,
+  onToggleAudio,
   onToggleVideo,
-  onLeaveCall
+  onEndCall
 }: VideoCallControlsProps) {
+  const isMobile = useMediaQuery('(max-width: 768px)')
+
+  if (isMobile) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 flex justify-center gap-4 bg-background/80 p-4 backdrop-blur-sm">
+        <ControlButtons
+          isMuted={isMuted}
+          isVideoOff={isVideoOff}
+          onToggleAudio={onToggleAudio}
+          onToggleVideo={onToggleVideo}
+          onEndCall={onEndCall}
+          variant="mobile"
+        />
+      </div>
+    )
+  }
+
   return (
-    <footer className="bg-gray-800 p-4 border-t border-gray-700">
-      <div className="flex justify-center items-center gap-4">
-        <Button
-          onClick={onToggleMute}
-          variant={isMuted ? "destructive" : "secondary"}
-          size="lg"
-          className="rounded-full h-12 w-12"
-          disabled={!isConnected}
-        >
-          {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-        </Button>
-
-        <Button
-          onClick={onToggleVideo}
-          variant={isVideoOff ? "destructive" : "secondary"}
-          size="lg"
-          className="rounded-full h-12 w-12"
-          disabled={!isConnected}
-        >
-          {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
-        </Button>
-
-        <Button
-          onClick={onLeaveCall}
-          variant="destructive"
-          size="lg"
-          className="rounded-full h-12 w-12"
-        >
-          <Phone className="h-5 w-5" />
-        </Button>
-      </div>
-      
-      <div className="text-center mt-4 text-sm text-gray-400">
-        {conversationType === 'exam' 
-          ? 'Answer questions clearly and take your time to explain your thoughts'
-          : 'Relax and enjoy discussing what you\'ve learned'
-        }
-      </div>
-    </footer>
+    <div className="flex justify-center gap-4 p-4">
+      <ControlButtons
+        isMuted={isMuted}
+        isVideoOff={isVideoOff}
+        onToggleAudio={onToggleAudio}
+        onToggleVideo={onToggleVideo}
+        onEndCall={onEndCall}
+      />
+    </div>
   )
 } 
