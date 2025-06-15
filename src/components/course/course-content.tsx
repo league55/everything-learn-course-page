@@ -152,10 +152,10 @@ export function CourseContent({
         </div>
       </div>
 
-      {/* Desktop Header - Hidden on mobile */}
-      <div className="hidden md:block flex-shrink-0 border-b border-border p-6 bg-card">
+      {/* Desktop Header - Hidden on mobile - Made more compact */}
+      <div className="hidden md:block flex-shrink-0 border-b border-border p-4 bg-card">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
           <span>{course.topic}</span>
           <span>→</span>
           <span>Module {moduleIndex + 1}</span>
@@ -163,49 +163,56 @@ export function CourseContent({
           <span className="text-foreground font-medium">{topic.summary}</span>
         </div>
 
-        {/* Topic Header */}
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Badge variant="outline" className="text-xs">
-                Module {moduleIndex + 1} • Topic {topicIndex + 1}
-              </Badge>
-              <Badge variant="secondary" className="text-xs">
-                {getDepthLabel(course.depth)}
-              </Badge>
+        {/* Compact Topic Header */}
+        <div className="space-y-2">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="outline" className="text-xs">
+                  Module {moduleIndex + 1} • Topic {topicIndex + 1}
+                </Badge>
+                <Badge variant="secondary" className="text-xs">
+                  {getDepthLabel(course.depth)}
+                </Badge>
+              </div>
+              <h1 className="text-xl font-bold mb-1 line-clamp-2">{topic.summary}</h1>
+              <p className="text-sm text-muted-foreground line-clamp-1">
+                {module.summary}
+              </p>
             </div>
-            <h1 className="text-3xl font-bold mb-2">{topic.summary}</h1>
-            <p className="text-lg text-muted-foreground line-clamp-2">
-              {module.summary}
-            </p>
+
+            {/* Compact Progress Info */}
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <BookOpen className="h-3 w-3" />
+                <span>{totalModules} modules</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Target className="h-3 w-3" />
+                <span>{courseProgress}%</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span>{new Date(enrollment.enrolled_at).toLocaleDateString()}</span>
+              </div>
+            </div>
           </div>
 
-          {/* Keywords */}
+          {/* Keywords - Compact */}
           {topic.keywords.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {topic.keywords.map((keyword, index) => (
-                <Badge key={index} variant="outline" className="text-xs">
+            <div className="flex flex-wrap gap-1">
+              {topic.keywords.slice(0, 6).map((keyword, index) => (
+                <Badge key={index} variant="outline" className="text-xs px-2 py-0">
                   {keyword}
                 </Badge>
               ))}
+              {topic.keywords.length > 6 && (
+                <Badge variant="outline" className="text-xs px-2 py-0">
+                  +{topic.keywords.length - 6}
+                </Badge>
+              )}
             </div>
           )}
-
-          {/* Progress Info */}
-          <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <BookOpen className="h-4 w-4" />
-              <span>{totalModules} modules</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Target className="h-4 w-4" />
-              <span>Progress: {courseProgress}%</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              <span>Enrolled {new Date(enrollment.enrolled_at).toLocaleDateString()}</span>
-            </div>
-          </div>
         </div>
       </div>
 
