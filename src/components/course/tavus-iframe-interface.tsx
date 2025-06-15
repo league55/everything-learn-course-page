@@ -33,6 +33,7 @@ export function TavusIframeInterface({
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [sessionEnded, setSessionEnded] = useState(false)
   const [transcript, setTranscript] = useState<string>('')
+  const [tavusConversationId, setTavusConversationId] = useState<string>('')
 
   console.log('TavusIframeInterface initialized:', {
     conversationUrl,
@@ -40,6 +41,32 @@ export function TavusIframeInterface({
     conversationId
   })
 
+  // Force end conversation via Tavus API
+  const forceEndConversation = useCallback(async () => {
+    if (!tavusConversationId) {
+      console.log('No Tavus conversation ID available to end')
+      return
+    }
+
+    try {
+      console.log('Force ending Tavus conversation:', tavusConversationId)
+      
+      // Call our edge function to end the conversation
+      const { data, error } = await dbOperations.supabase.functions.invoke('tavus-end-conversation', {
+        body: {
+          conversation_id: tavusConversationId
+        }
+      })
+
+      if (error) {
+        console.warn('Failed to force end conversation:', error)
+      } else {
+        console.log('Successfully ended conversation:', data)
+      }
+    } catch (error) {
+      console.warn('Error force ending conversation:', error)
+    }
+  }, [tavusConversationId])
   // Subscribe to real-time updates from webhooks
   useEffect(() => {
     const subscription = dbOperations.subscribeToConversationUpdates(
@@ -149,10 +176,16 @@ export function TavusIframeInterface({
     }
   }, [onComplete, transcript])
 
-  const handleCloseWithoutComplete = useCallback(() => {
+  const handleCloseWithoutComplete = useCallback(async () => {
     console.log('User closing without completing')
+    
+    // Force end the conversation if it's still active
+    if (!sessionEnded) {
+      await forceEndConversation()
+    }
+    
     onClose()
-  }, [onClose])
+  }, [onClose, sessionEnded, forceEndConversation])
 
   const isExam = conversationType === 'exam'
 
