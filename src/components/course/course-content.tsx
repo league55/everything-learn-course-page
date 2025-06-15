@@ -466,28 +466,6 @@ export function CourseContent({
                 </div>
               )}
             </div>
-
-            {/* Learning Objectives Section */}
-            <div className="mt-8 md:mt-12 p-4 md:p-6 bg-muted/50 rounded-lg">
-              <h3 className="text-base md:text-lg font-semibold mb-2 md:mb-3 flex items-center gap-2">
-                <Target className="h-4 w-4 md:h-5 md:w-5" />
-                Learning Objectives
-              </h3>
-              <ul className="space-y-2 text-xs md:text-sm">
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="h-3 w-3 md:h-4 md:w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Understand the key concepts covered in this topic</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="h-3 w-3 md:h-4 md:w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Apply the knowledge in practical scenarios</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle className="h-3 w-3 md:h-4 md:w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Connect this topic to the broader course context</span>
-                </li>
-              </ul>
-            </div>
           </div>
         </ScrollArea>
       </div>
