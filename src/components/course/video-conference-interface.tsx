@@ -68,8 +68,43 @@ function VideoCallComponent({
     isConnecting,
     isConnected,
     participantCount: participantIds.length,
-    hasDaily: !!daily
+    hasDaily: !!daily,
+    localParticipantId: localParticipant?.user_id,
+    remoteParticipantId: remoteParticipant?.user_id
   })
+
+  // Log participant changes with detailed track information
+  useEffect(() => {
+    if (localParticipant) {
+      console.log('👤 Local participant updated:', {
+        user_id: localParticipant.user_id,
+        audio: {
+          state: localParticipant.tracks?.audio?.state,
+          hasPersistentTrack: !!localParticipant.tracks?.audio?.persistentTrack
+        },
+        video: {
+          state: localParticipant.tracks?.video?.state,
+          hasPersistentTrack: !!localParticipant.tracks?.video?.persistentTrack
+        }
+      })
+    }
+  }, [localParticipant])
+
+  useEffect(() => {
+    if (remoteParticipant) {
+      console.log('🤖 Remote participant updated:', {
+        user_id: remoteParticipant.user_id,
+        audio: {
+          state: remoteParticipant.tracks?.audio?.state,
+          hasPersistentTrack: !!remoteParticipant.tracks?.audio?.persistentTrack
+        },
+        video: {
+          state: remoteParticipant.tracks?.video?.state,
+          hasPersistentTrack: !!remoteParticipant.tracks?.video?.persistentTrack
+        }
+      })
+    }
+  }, [remoteParticipant])
 
   // Event handlers with proper logging
   const handleJoinedMeeting = useCallback(() => {
@@ -99,11 +134,21 @@ function VideoCallComponent({
   }, [onError])
 
   const handleParticipantJoined = useCallback((event: any) => {
-    console.log('👤 Participant joined:', event.participant.user_id)
+    console.log('👤 Participant joined:', {
+      user_id: event.participant.user_id,
+      participant: event.participant
+    })
   }, [])
 
   const handleParticipantLeft = useCallback((event: any) => {
     console.log('👤 Participant left:', event.participant.user_id)
+  }, [])
+
+  const handleParticipantUpdated = useCallback((event: any) => {
+    console.log('🔄 Participant updated:', {
+      user_id: event.participant.user_id,
+      tracks: event.participant.tracks
+    })
   }, [])
 
   // Initialize Daily call
@@ -128,6 +173,7 @@ function VideoCallComponent({
         daily.on('error', handleError)
         daily.on('participant-joined', handleParticipantJoined)
         daily.on('participant-left', handleParticipantLeft)
+        daily.on('participant-updated', handleParticipantUpdated)
 
         // Set connection timeout
         joinTimeout = setTimeout(() => {
@@ -174,6 +220,7 @@ function VideoCallComponent({
           daily.off('error', handleError)
           daily.off('participant-joined', handleParticipantJoined)
           daily.off('participant-left', handleParticipantLeft)
+          daily.off('participant-updated', handleParticipantUpdated)
 
           // Leave the call if we joined
           if (hasJoinedRef.current && daily.meetingState() !== 'left') {
@@ -185,7 +232,7 @@ function VideoCallComponent({
         }
       }
     }
-  }, [daily, roomUrl, handleJoinedMeeting, handleLeftMeeting, handleError, handleParticipantJoined, handleParticipantLeft])
+  }, [daily, roomUrl, handleJoinedMeeting, handleLeftMeeting, handleError, handleParticipantJoined, handleParticipantLeft, handleParticipantUpdated])
 
   // Control functions
   const toggleMute = useCallback(() => {
@@ -292,6 +339,7 @@ function VideoCallComponent({
                 playsInline
                 ref={(el) => {
                   if (el && remoteParticipant.tracks?.video?.persistentTrack) {
+                    console.log('🎥 Setting remote video track')
                     el.srcObject = new MediaStream([remoteParticipant.tracks.video.persistentTrack])
                   }
                 }}
@@ -302,12 +350,13 @@ function VideoCallComponent({
                 playsInline
                 ref={(el) => {
                   if (el && remoteParticipant.tracks?.audio?.persistentTrack) {
+                    console.log('🔊 Setting remote audio track')
                     el.srcObject = new MediaStream([remoteParticipant.tracks.audio.persistentTrack])
                   }
                 }}
               />
               <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 px-3 py-1 rounded text-sm font-medium">
-                AI Expert
+                AI Expert ({remoteParticipant.user_id})
               </div>
               <div className="absolute top-4 right-4">
                 <Badge variant="outline" className="bg-black bg-opacity-70">
@@ -326,6 +375,7 @@ function VideoCallComponent({
                 muted
                 ref={(el) => {
                   if (el && localParticipant.tracks?.video?.persistentTrack) {
+                    console.log('🎥 Setting local video track')
                     el.srcObject = new MediaStream([localParticipant.tracks.video.persistentTrack])
                   }
                 }}
@@ -340,7 +390,7 @@ function VideoCallComponent({
                 </div>
               )}
               <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 px-3 py-1 rounded text-sm font-medium">
-                You
+                You ({localParticipant.user_id})
               </div>
               <div className="absolute top-4 right-4 flex gap-2">
                 {isMuted && (
@@ -365,6 +415,9 @@ function VideoCallComponent({
               <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
               <h3 className="text-lg font-semibold mb-2">Waiting for expert to join...</h3>
               <p className="text-gray-400">Your AI expert will appear here shortly</p>
+              <p className="text-xs text-gray-500 mt-2">
+                Participants: {participantIds.join(', ')}
+              </p>
             </Card>
           )}
         </div>
