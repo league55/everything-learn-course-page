@@ -8,15 +8,57 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
+// Helper function to log cookie operations
+const logCookieOperation = (operation: string, key: string, value?: string) => {
+  console.log(`🍪 Cookie ${operation}:`, {
+    key,
+    value: value ? `${value.substring(0, 10)}...` : 'undefined',
+    domain: '.everythinglearn.online',
+    allCookies: document.cookie
+  })
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storageKey: 'orion_library_auth',
-    storage: crossDomainAuthStorage,
+    storageKey: 'orion_access_token',
+    storage: {
+      getItem: (key) => {
+        const cookies = document.cookie.split(';')
+        const cookie = cookies.find(c => c.trim().startsWith(`${key}=`))
+        const value = cookie ? cookie.split('=')[1] : null
+        logCookieOperation('GET', key, value || undefined)
+        return Promise.resolve(value)
+      },
+      setItem: (key, value) => {
+        const cookieString = `${key}=${value}; path=/; domain=.everythinglearn.online; secure; samesite=lax`
+        document.cookie = cookieString
+        logCookieOperation('SET', key, value)
+        return Promise.resolve()
+      },
+      removeItem: (key) => {
+        const cookieString = `${key}=; path=/; domain=.everythinglearn.online; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=lax`
+        document.cookie = cookieString
+        logCookieOperation('REMOVE', key)
+        return Promise.resolve()
+      }
+    },
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,
-    flowType: 'pkce'
+    detectSessionInUrl: true
   }
+})
+
+// Log initial auth state
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('🔐 Auth State Change:', {
+    event,
+    session: session ? {
+      user: session.user?.email,
+      expires_at: session.expires_at,
+      access_token: session.access_token ? `${session.access_token.substring(0, 10)}...` : null
+    } : null,
+    currentCookies: document.cookie
+  })
 })
 
 // Types for our database schema
