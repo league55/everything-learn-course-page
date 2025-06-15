@@ -10,7 +10,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storageKey: 'everythinglearn-auth-token',
+    storageKey: 'orion_library_auth',
     storage: crossDomainAuthStorage,
     autoRefreshToken: true,
     persistSession: true,
