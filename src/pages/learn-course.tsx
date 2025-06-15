@@ -80,8 +80,7 @@ export function LearnCoursePage() {
     courseData,
     selectedModuleIndex,
     setShowFinalTestButton,
-    setCourseReadyForCompletion,
-    courseReadyForCompletion
+    setCourseReadyForCompletion
   )
 
   if (loading) {
