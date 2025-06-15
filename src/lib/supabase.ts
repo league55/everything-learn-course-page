@@ -681,20 +681,24 @@ export const dbOperations = {
   
       return data
     },
-  
-    async getVideoConversations(userId?: string): Promise<VideoConversation[]> {
-      const { data, error } = await supabase
-        .from('video_conversations')
-        .select('*')
-        .eq(userId ? 'user_id' : 'user_id', userId || (await supabase.auth.getUser()).data.user?.id)
-        .order('created_at', { ascending: false })
-  
-      if (error) {
-        throw new Error(`Failed to fetch video conversations: ${error.message}`)
-      }
-  
-      return data || []
-    },
+
+  // Add supabase client access for edge function calls
+  supabase,
+
+  // Get video conversations
+  async getVideoConversations(userId?: string): Promise<VideoConversation[]> {
+    const { data, error } = await supabase
+      .from('video_conversations')
+      .select('*')
+      .eq(userId ? 'user_id' : 'user_id', userId || (await supabase.auth.getUser()).data.user?.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      throw new Error(`Failed to fetch video conversations: ${error.message}`)
+    }
+
+    return data || []
+  },
 
     // Subscribe to conversation updates
     subscribeToConversationUpdates(
