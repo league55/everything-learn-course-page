@@ -4,44 +4,123 @@ import { crossDomainAuthStorage } from './auth-storage'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Cookie utility functions
+
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
 }
 
-// Helper function to log cookie operations
-const logCookieOperation = (operation: string, key: string, value?: string) => {
-  console.log(`🍪 Cookie ${operation}:`, {
-    key,
-    value: value ? `${value.substring(0, 10)}...` : 'undefined',
-    domain: '.everythinglearn.online',
-    allCookies: document.cookie
-  })
+// Dynamic domain detection for cookie storage
+function getCookieDomain(): string {
+  if (typeof window === 'undefined') return ''
+  
+  const hostname = window.location.hostname
+  console.log('Current hostname:', hostname)
+  
+  // For localhost and IP addresses, don't set domain
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+    console.log('Using localhost/IP - no domain set')
+    return ''
+  }
+  
+  // For everythinglearn.online and its subdomains
+  if (hostname.includes('everythinglearn.online')) {
+    console.log('Using everythinglearn.online domain')
+    return '.everythinglearn.online'
+  }
+  
+  // For other domains, try to extract the main domain
+  const parts = hostname.split('.')
+  if (parts.length >= 2) {
+    const domain = `.${parts.slice(-2).join('.')}`
+    console.log('Extracted domain:', domain)
+    return domain
+  }
+  
+  console.log('No domain set')
+  return ''
 }
 
+function getCookieAttributes(): string {
+  const domain = getCookieDomain()
+  const isSecure = window.location.protocol === 'https:'
+  
+  let attributes = 'path=/; samesite=lax; max-age=31536000' // 1 year
+  
+  if (domain) {
+    attributes += `; domain=${domain}`
+  }
+  
+  if (isSecure) {
+    attributes += '; secure'
+  }
+  
+  return attributes
+}
+
+
+// Create a custom storage implementation
+const customStorage = {
+  getItem: (key: string) => {
+    try {
+      console.log('Getting cookie:', key)
+      const cookies = document.cookie.split(';')
+      const cookie = cookies.find(c => c.trim().startsWith(`${key}=`))
+      const value = cookie ? decodeURIComponent(cookie.split('=')[1]) : null
+      console.log('Cookie value:', value ? 'exists' : 'null')
+      return value
+    } catch (error) {
+      console.error('Error getting cookie:', error)
+      return null
+    }
+  },
+  setItem: (key: string, value: string) => {
+    try {
+      console.log('Setting cookie:', key)
+      const domain = getCookieDomain()
+      let attributes = 'path=/; samesite=lax; max-age=31536000' // 1 year
+      
+      if (domain) {
+        attributes += `; domain=${domain}`
+      }
+      
+      if (window.location.protocol === 'https:') {
+        attributes += '; secure'
+      }
+      
+      console.log('Cookie attributes:', attributes)
+      document.cookie = `${key}=${encodeURIComponent(value)}; ${attributes}`
+    } catch (error) {
+      console.error('Error setting cookie:', error)
+    }
+  },
+  removeItem: (key: string) => {
+    try {
+      console.log('Removing cookie:', key)
+      const domain = getCookieDomain()
+      let attributes = 'path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; samesite=lax'
+      
+      if (domain) {
+        attributes += `; domain=${domain}`
+      }
+      
+      if (window.location.protocol === 'https:') {
+        attributes += '; secure'
+      }
+      
+      console.log('Cookie removal attributes:', attributes)
+      document.cookie = `${key}=; ${attributes}`
+    } catch (error) {
+      console.error('Error removing cookie:', error)
+    }
+  }
+}
+
+// Create the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storageKey: 'orion_access_token',
-    storage: {
-      getItem: (key) => {
-        const cookies = document.cookie.split(';')
-        const cookie = cookies.find(c => c.trim().startsWith(`${key}=`))
-        const value = cookie ? cookie.split('=')[1] : null
-        logCookieOperation('GET', key, value || undefined)
-        return Promise.resolve(value)
-      },
-      setItem: (key, value) => {
-        const cookieString = `${key}=${value}; path=/; domain=.everythinglearn.online; secure; samesite=lax`
-        document.cookie = cookieString
-        logCookieOperation('SET', key, value)
-        return Promise.resolve()
-      },
-      removeItem: (key) => {
-        const cookieString = `${key}=; path=/; domain=.everythinglearn.online; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=lax`
-        document.cookie = cookieString
-        logCookieOperation('REMOVE', key)
-        return Promise.resolve()
-      }
-    },
+    storageKey: 'sb-auth-token',
+    storage: customStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true
