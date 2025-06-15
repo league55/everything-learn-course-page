@@ -95,7 +95,6 @@ export function CourseContent({
   // Parse full content if it's a JSON string
   const parseFullContent = (content: string | null): { 
     content: string, 
-    metadata?: any, 
     citations?: any[] 
   } | null => {
     if (!content) return null
@@ -106,7 +105,6 @@ export function CourseContent({
       if (parsed.content) {
         return {
           content: parsed.content,
-          metadata: parsed.metadata,
           citations: parsed.citations
         }
       }
@@ -423,38 +421,6 @@ export function CourseContent({
                             )}
                           </div>
                         ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Metadata Section */}
-                  {parsedFullContent.metadata && (
-                    <div className="mt-4 md:mt-6 p-3 md:p-4 bg-muted/20 rounded-lg">
-                      <div className="grid grid-cols-2 gap-3 md:gap-4 text-xs md:text-sm">
-                        {parsedFullContent.metadata.word_count && (
-                          <div>
-                            <div className="font-medium text-muted-foreground">Word Count</div>
-                            <div>{parsedFullContent.metadata.word_count}</div>
-                          </div>
-                        )}
-                        {parsedFullContent.metadata.estimated_reading_time && (
-                          <div>
-                            <div className="font-medium text-muted-foreground">Reading Time</div>
-                            <div>{parsedFullContent.metadata.estimated_reading_time} min</div>
-                          </div>
-                        )}
-                        {parsedFullContent.metadata.difficulty_level && (
-                          <div>
-                            <div className="font-medium text-muted-foreground">Difficulty</div>
-                            <div className="capitalize">{parsedFullContent.metadata.difficulty_level}</div>
-                          </div>
-                        )}
-                        {parsedFullContent.metadata.key_concepts && (
-                          <div>
-                            <div className="font-medium text-muted-foreground">Key Concepts</div>
-                            <div>{parsedFullContent.metadata.key_concepts.length}</div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
