@@ -4,11 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { ConversationCompletionModal } from './conversation-completion-modal'
 import { 
   X, 
   Loader2,
   AlertTriangle,
-  CheckCircle,
   ExternalLink,
   MessageSquare
 } from 'lucide-react'
@@ -193,40 +193,12 @@ export function TavusIframeInterface({
   // Session completed state
   if (sessionEnded) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <Card className="w-full max-w-2xl bg-card border-2 border-green-500/20 shadow-2xl">
-          <div className="p-6 text-center">
-            <div className="mx-auto h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-4">
-              <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
-            </div>
-            <h3 className="text-2xl font-semibold mb-4">Session Complete!</h3>
-            <p className="text-muted-foreground mb-6">
-              {isExam 
-                ? 'Your oral examination has been completed successfully. Your responses have been recorded and will be reviewed.'
-                : 'Great conversation! You\'ve successfully completed your practice session.'
-              }
-            </p>
-            
-            {transcript && (
-              <div className="bg-muted/50 rounded-lg p-4 text-left mb-6">
-                <h4 className="font-semibold mb-2 text-sm">Session Summary</h4>
-                <p className="text-xs text-muted-foreground line-clamp-3">
-                  {transcript.length > 200 ? `${transcript.substring(0, 200)}...` : transcript}
-                </p>
-              </div>
-            )}
-            
-            <div className="flex gap-3">
-              <Button onClick={handleCloseWithoutComplete} variant="outline" className="flex-1">
-                Close Session
-              </Button>
-              <Button onClick={handleManualComplete} className="flex-1">
-                Complete & Continue
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <ConversationCompletionModal
+        conversationType={conversationType}
+        transcript={transcript}
+        onClose={handleCloseWithoutComplete}
+        onContinue={handleManualComplete}
+      />
     )
   }
 
@@ -287,27 +259,6 @@ export function TavusIframeInterface({
         />
       </div>
 
-      {/* Instructions overlay (shows briefly) */}
-      {!isLoading && !hasError && (
-        <div className="absolute bottom-4 left-4 right-4 z-10">
-          <Card className="bg-gray-900/90 backdrop-blur-sm border-gray-700 p-4">
-            <div className="flex items-start gap-3">
-              <MessageSquare className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-              <div className="text-sm">
-                <p className="text-white font-medium mb-1">
-                  {conversationType === 'exam' ? 'Examination Guidelines' : 'Conversation Tips'}
-                </p>
-                <p className="text-gray-300 text-xs">
-                  {conversationType === 'exam' 
-                    ? 'Answer questions clearly and take your time to explain your thoughts. This is your opportunity to demonstrate your knowledge.'
-                    : 'Relax and enjoy discussing what you\'ve learned. Ask questions and share your thoughts freely.'
-                  }
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
     </div>
   )
 }
