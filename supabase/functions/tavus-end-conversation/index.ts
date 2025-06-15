@@ -3,7 +3,7 @@ import { z } from 'npm:zod@^3.23.8'
 
 // Request validation schema
 const EndConversationRequestSchema = z.object({
-  conversation_id: z.string().min(1)
+  tavus_conversation_id: z.string().min(1)
 })
 
 const corsHeaders = {
@@ -38,12 +38,12 @@ Deno.serve(async (req: Request) => {
     console.log('Received end conversation request:', JSON.stringify(requestData, null, 2))
 
     const validatedRequest = EndConversationRequestSchema.parse(requestData)
-    const { conversation_id } = validatedRequest
+    const { tavus_conversation_id } = validatedRequest
 
-    console.log('Ending Tavus conversation:', conversation_id)
+    console.log('Ending Tavus conversation:', tavus_conversation_id)
 
     // Call Tavus API to end the conversation
-    const tavusResponse = await fetch(`https://tavusapi.com/v2/conversations/${conversation_id}/end`, {
+    const tavusResponse = await fetch(`https://tavusapi.com/v2/conversations/${tavus_conversation_id}/end`, {
       method: 'POST',
       headers: {
         'x-api-key': tavusApiKey,
@@ -59,42 +59,38 @@ Deno.serve(async (req: Request) => {
         body: errorData
       })
       
-      // Don't throw error if conversation is already ended
-      if (tavusResponse.status === 404 || errorData.includes('not found') || errorData.includes('already ended')) {
-        console.log('Conversation already ended or not found, treating as success')
+      // Don't throw error if conversation is already ended or not found
+      if (tavusResponse.status === 404 || tavusResponse.status === 409) {
+        console.log('Conversation already ended or not found, continuing...')
       } else {
         throw new Error(`Tavus API error (${tavusResponse.status}): ${errorData}`)
       }
     } else {
-      const tavusData = await tavusResponse.json()
-      console.log('Tavus conversation ended successfully:', tavusData)
+      console.log('Tavus conversation ended successfully')
     }
 
-    // Update our database record to mark as ended
-    const { error: dbError } = await supabase
+    // Update conversation status in database
+    const { error: updateError } = await supabase
       .from('video_conversations')
       .update({
         status: 'ended',
         session_log: {
           ended_at: new Date().toISOString(),
-          ended_by: 'user_action',
-          force_ended: true
+          ended_by: 'user_action'
         }
       })
-      .eq('tavus_conversation_id', conversation_id)
+      .eq('tavus_conversation_id', tavus_conversation_id)
 
-    if (dbError) {
-      console.warn('Failed to update database record:', dbError)
+    if (updateError) {
+      console.warn('Failed to update conversation status in database:', updateError)
       // Don't fail the request for this
     }
-
-    console.log('Successfully ended conversation:', conversation_id)
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        conversation_id,
-        message: 'Conversation ended successfully'
+        conversation_id: tavus_conversation_id,
+        status: 'ended'
       }),
       {
         status: 200,
