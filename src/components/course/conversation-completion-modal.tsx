@@ -118,13 +118,15 @@ export function ConversationCompletionModal({
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3 pt-4">
             <Button onClick={onClose} variant="outline" className="flex-1">
-              Continue Learning
+              {onContinue ? 'Close Session' : 'Continue Learning'}
             </Button>
             
             {onContinue && (
               <Button onClick={onContinue} className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
                 <Trophy className="h-4 w-4 mr-2" />
-                View Progress
+            {onContinue && (
+              <Button onClick={onContinue} className="flex-1">
+                Complete & Continue
               </Button>
             )}
           </div>

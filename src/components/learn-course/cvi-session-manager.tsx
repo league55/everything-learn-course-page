@@ -141,7 +141,8 @@ export function useCviSession(
     setShowCviModal(false)
     setConversationUrl(null)
     setConversationId(null)
-    setShowFinalTestButton(true) // Allow them to try again
+    // Don't show the final test button again - they already completed the course content
+    // The course should be considered complete at this point
   }
 
   return {
