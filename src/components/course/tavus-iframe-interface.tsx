@@ -1,17 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { dbOperations } from '@/lib/supabase'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ConversationCompletionModal } from './conversation-completion-modal'
-import { 
-  X, 
-  Loader2,
-  AlertTriangle,
-  ExternalLink,
-  MessageSquare
-} from 'lucide-react'
+import { TavusIframeLoadingOverlay } from './tavus-iframe-loading-overlay'
+import { TavusIframeDisplay } from './tavus-iframe-display'
+import { TavusIframeErrorState } from './tavus-iframe-error-state'
 
 interface TavusIframeInterfaceProps {
   conversationUrl: string
@@ -54,7 +46,7 @@ export function TavusIframeInterface({
       // Call our edge function to end the conversation
       const { data, error } = await dbOperations.supabase.functions.invoke('tavus-end-conversation', {
         body: {
-          conversation_id: tavusConversationId
+          tavus_conversation_id: tavusConversationId
         }
       })
 
@@ -74,7 +66,7 @@ export function TavusIframeInterface({
       if (tavusConversationId && !sessionEnded) {
         // Use sendBeacon for reliable cleanup during page unload
         const endUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-end-conversation`
-        const payload = JSON.stringify({ conversation_id: tavusConversationId })
+        const payload = JSON.stringify({ tavus_conversation_id: tavusConversationId })
         
         if (navigator.sendBeacon) {
           navigator.sendBeacon(endUrl, payload)
@@ -209,39 +201,18 @@ export function TavusIframeInterface({
     onClose()
   }, [onClose, sessionEnded, forceEndConversation])
 
-  const isExam = conversationType === 'exam'
+  const handleRetry = useCallback(() => {
+    window.location.reload()
+  }, [])
 
   // Error state
   if (hasError) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <Card className="w-full max-w-2xl bg-card border-2 border-destructive/20 shadow-2xl">
-          <div className="p-6">
-            <div className="flex items-center gap-2 text-destructive mb-4">
-              <AlertTriangle className="h-5 w-5" />
-              <h3 className="text-lg font-semibold">Connection Error</h3>
-            </div>
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{errorMessage}</AlertDescription>
-            </Alert>
-            <p className="text-sm text-muted-foreground mb-4">
-              Please check your internet connection and ensure you've granted camera and microphone permissions.
-            </p>
-            <div className="flex gap-3">
-              <Button onClick={handleCloseWithoutComplete} variant="outline" className="flex-1">
-                Close
-              </Button>
-              <Button 
-                onClick={() => window.location.reload()} 
-                variant="default" 
-                className="flex-1"
-              >
-                Retry
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <TavusIframeErrorState
+        errorMessage={errorMessage}
+        onClose={handleCloseWithoutComplete}
+        onRetry={handleRetry}
+      />
     )
   }
 
@@ -259,46 +230,15 @@ export function TavusIframeInterface({
 
   return (
     <div className="fixed inset-0 bg-black z-50">
-      {/* Close button overlay - positioned to not interfere with Tavus header */}
-      <div className="absolute top-4 right-4 z-10">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleCloseWithoutComplete}
-          className="h-10 w-10 rounded-full bg-black/70 hover:bg-black/80 text-white shadow-lg backdrop-blur-sm"
-        >
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
-
-      {/* Loading overlay */}
-      {isLoading && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-20">
-          <Card className="p-8 text-center max-w-md bg-card/95 backdrop-blur-sm">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-            <h3 className="text-lg font-semibold mb-2 text-white">Connecting to your expert...</h3>
-            <p className="text-muted-foreground mb-4">
-              Please allow camera and microphone access when prompted
-            </p>
-            <div className="text-xs text-muted-foreground">
-              This may take up to 30 seconds
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Main iframe container - full screen */}
-      <div className="w-full h-full">
-        <iframe
-          src={conversationUrl}
-          className="w-full h-full border-0"
-          allow="camera; microphone; autoplay; encrypted-media; fullscreen"
-          allowFullScreen
-          onLoad={handleIframeLoad}
-          onError={handleIframeError}
-          title={`${conversationType === 'exam' ? 'Oral Examination' : 'Practice Session'} with AI Expert`}
-        />
-      </div>
+      <TavusIframeLoadingOverlay isLoading={isLoading} />
+      
+      <TavusIframeDisplay
+        conversationUrl={conversationUrl}
+        conversationType={conversationType}
+        onClose={handleCloseWithoutComplete}
+        onIframeLoad={handleIframeLoad}
+        onIframeError={handleIframeError}
+      />
     </div>
   )
 }
