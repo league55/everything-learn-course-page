@@ -28,20 +28,23 @@ export function useCourseData(courseId: string | undefined): UseCourseDataResult
 
       try {
         setLoading(true)
+        setError(null)
         
         // Load course configuration
         const courses = await dbOperations.getCourseConfigurations()
         const configuration = courses.find(c => c.id === courseId)
         
         if (!configuration) {
-          throw new Error('Course not found')
+          setError('Course not found')
+          return
         }
 
         // Load syllabus
         const syllabus = await dbOperations.getSyllabus(courseId)
         
         if (!syllabus || syllabus.status !== 'completed') {
-          throw new Error('Course syllabus is not ready')
+          setError('Course syllabus is not ready')
+          return
         }
 
         // Load user enrollment
@@ -49,7 +52,8 @@ export function useCourseData(courseId: string | undefined): UseCourseDataResult
         const enrollment = enrolledCourses.find(ec => ec.id === courseId)?.user_enrollment
         
         if (!enrollment) {
-          throw new Error('You are not enrolled in this course')
+          setError('You are not enrolled in this course')
+          return
         }
 
         setCourseData({
