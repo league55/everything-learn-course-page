@@ -20,7 +20,8 @@ export function useCviSession(
   courseData: CourseData | null,
   selectedModuleIndex: number,
   setShowFinalTestButton: (show: boolean) => void,
-  setCourseReadyForCompletion: (ready: boolean) => void
+  setCourseReadyForCompletion: (ready: boolean) => void,
+  courseReadyForCompletion: boolean
 ): UseCviSessionResult {
   const [showCviModal, setShowCviModal] = useState(false)
   const [conversationUrl, setConversationUrl] = useState<string | null>(null)
