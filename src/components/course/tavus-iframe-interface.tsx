@@ -204,30 +204,16 @@ export function TavusIframeInterface({
 
   return (
     <div className="fixed inset-0 bg-black z-50">
-      {/* Header with close button and status */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-gray-900/90 backdrop-blur-sm border-b border-gray-700">
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-3">
-            <Badge variant={conversationType === 'exam' ? 'destructive' : 'secondary'}>
-              {conversationType === 'exam' ? 'Oral Examination' : 'Practice Session'}
-            </Badge>
-            {!isLoading && (
-              <div className="flex items-center gap-1 text-green-400 text-sm">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                Live
-              </div>
-            )}
-          </div>
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCloseWithoutComplete}
-            className="h-10 w-10 rounded-full bg-black/50 hover:bg-black/70 text-white"
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
+      {/* Close button overlay - positioned to not interfere with Tavus header */}
+      <div className="absolute top-4 right-4 z-10">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleCloseWithoutComplete}
+          className="h-10 w-10 rounded-full bg-black/70 hover:bg-black/80 text-white shadow-lg backdrop-blur-sm"
+        >
+          <X className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Loading overlay */}
@@ -246,8 +232,8 @@ export function TavusIframeInterface({
         </div>
       )}
 
-      {/* Main iframe container */}
-      <div className="w-full h-full pt-16">
+      {/* Main iframe container - full screen */}
+      <div className="w-full h-full">
         <iframe
           src={conversationUrl}
           className="w-full h-full border-0"
@@ -258,7 +244,6 @@ export function TavusIframeInterface({
           title={`${conversationType === 'exam' ? 'Oral Examination' : 'Practice Session'} with AI Expert`}
         />
       </div>
-
     </div>
   )
 }
