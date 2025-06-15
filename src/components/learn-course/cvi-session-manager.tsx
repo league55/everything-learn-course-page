@@ -141,8 +141,12 @@ export function useCviSession(
     setShowCviModal(false)
     setConversationUrl(null)
     setConversationId(null)
-    // Don't show the final test button again - they already completed the course content
-    // The course should be considered complete at this point
+    
+    // If the course is ready for completion, trigger the completion flow
+    if (courseReadyForCompletion) {
+      console.log('Course ready for completion, triggering completion flow')
+      handleCviComplete()
+    }
   }
 
   return {

@@ -198,13 +198,6 @@ export function TavusIframeInterface({
       await forceEndConversation()
     }
     
-    // If the session ended naturally (not an error), treat it as completion
-    if (sessionEnded && onComplete) {
-      console.log('Session ended naturally, treating as completion')
-      onComplete(transcript)
-      return
-    }
-    
     onClose()
   }, [onClose, sessionEnded, forceEndConversation])
 
