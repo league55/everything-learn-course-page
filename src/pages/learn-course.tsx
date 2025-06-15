@@ -16,7 +16,7 @@ import { CourseHeader } from '@/components/learn-course/course-header'
 import { CourseSidebar } from '@/components/course/course-sidebar'
 import { CourseContent } from '@/components/course/course-content'
 import { FinalTestButton } from '@/components/course/final-test-button'
-import { CviInterfaceModal } from '@/components/course/cvi-interface-modal'
+import { VideoConferenceInterface } from '@/components/course/video-conference-interface'
 
 export function LearnCoursePage() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -168,10 +168,10 @@ export function LearnCoursePage() {
         />
       )}
 
-      {/* CVI Interface Modal */}
+      {/* Video Conference Interface */}
       {showCviModal && dailyRoomUrl && (
-        <CviInterfaceModal
-          dailyRoomUrl={dailyRoomUrl}
+        <VideoConferenceInterface
+          roomUrl={dailyRoomUrl}
           conversationType={cviConversationType}
           onClose={handleCloseCvi}
           onComplete={handleCviComplete}
