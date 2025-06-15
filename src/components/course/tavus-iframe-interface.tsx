@@ -41,6 +41,39 @@ export function TavusIframeInterface({
     conversationId
   })
 
+  // Fetch the Tavus conversation ID from our database record
+  useEffect(() => {
+    const fetchTavusConversationId = async () => {
+      try {
+        console.log('Fetching Tavus conversation ID for record:', conversationId)
+        
+        const { data, error } = await dbOperations.supabase
+          .from('video_conversations')
+          .select('tavus_conversation_id')
+          .eq('id', conversationId)
+          .single()
+
+        if (error) {
+          console.error('Failed to fetch conversation record:', error)
+          return
+        }
+
+        if (data?.tavus_conversation_id) {
+          console.log('Found Tavus conversation ID:', data.tavus_conversation_id)
+          setTavusConversationId(data.tavus_conversation_id)
+        } else {
+          console.warn('No Tavus conversation ID found in record')
+        }
+      } catch (error) {
+        console.error('Error fetching Tavus conversation ID:', error)
+      }
+    }
+
+    if (conversationId) {
+      fetchTavusConversationId()
+    }
+  }, [conversationId])
+
   // Force end conversation via Tavus API
   const forceEndConversation = useCallback(async () => {
     if (!tavusConversationId) {
@@ -67,6 +100,28 @@ export function TavusIframeInterface({
       console.warn('Error force ending conversation:', error)
     }
   }, [tavusConversationId])
+
+  // Add cleanup on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (tavusConversationId && !sessionEnded) {
+        // Use sendBeacon for reliable cleanup during page unload
+        const endUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tavus-end-conversation`
+        const payload = JSON.stringify({ conversation_id: tavusConversationId })
+        
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(endUrl, payload)
+        }
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [tavusConversationId, sessionEnded])
+
   // Subscribe to real-time updates from webhooks
   useEffect(() => {
     const subscription = dbOperations.subscribeToConversationUpdates(
