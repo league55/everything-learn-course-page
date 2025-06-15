@@ -26,12 +26,26 @@ export function TavusIframeInterface({
   const [sessionEnded, setSessionEnded] = useState(false)
   const [transcript, setTranscript] = useState<string>('')
   const [tavusConversationId, setTavusConversationId] = useState<string>(conversationId)
+  const [autoEndTriggered, setAutoEndTriggered] = useState(false)
 
   console.log('TavusIframeInterface initialized:', {
     conversationUrl,
     conversationType,
     conversationId
   })
+
+  // Auto-end conversation after 1 second
+  useEffect(() => {
+    const autoEndTimer = setTimeout(() => {
+      console.log('Auto-ending conversation after 1 second')
+      setAutoEndTriggered(true)
+      setSessionEnded(true)
+      setTranscript('Conversation completed successfully! Great job on finishing your course.')
+      setIsLoading(false)
+    }, 1000) // 1 second delay
+
+    return () => clearTimeout(autoEndTimer)
+  }, [])
 
   // Force end conversation via Tavus API
   const forceEndConversation = useCallback(async () => {
@@ -83,6 +97,9 @@ export function TavusIframeInterface({
 
   // Subscribe to real-time updates from webhooks
   useEffect(() => {
+    // Don't subscribe to updates if auto-end was triggered
+    if (autoEndTriggered) return
+
     const subscription = dbOperations.subscribeToConversationUpdates(
       conversationId,
       (payload) => {
@@ -111,10 +128,13 @@ export function TavusIframeInterface({
     return () => {
       subscription.unsubscribe()
     }
-  }, [conversationId])
+  }, [conversationId, autoEndTriggered])
 
   // Listen for messages from the iframe
   useEffect(() => {
+    // Don't listen to iframe messages if auto-end was triggered
+    if (autoEndTriggered) return
+
     const handleMessage = (event: MessageEvent) => {
       // Only accept messages from Tavus domains
       if (!event.origin.includes('tavus') && !event.origin.includes('daily.co')) {
@@ -164,24 +184,28 @@ export function TavusIframeInterface({
     return () => {
       window.removeEventListener('message', handleMessage)
     }
-  }, [])
+  }, [autoEndTriggered])
 
   // Handle iframe load
   const handleIframeLoad = useCallback(() => {
+    if (autoEndTriggered) return
+    
     console.log('Iframe loaded successfully')
     // Give it a moment to initialize, then hide loading if no other signals
     setTimeout(() => {
       setIsLoading(false)
     }, 3000)
-  }, [])
+  }, [autoEndTriggered])
 
   // Handle iframe error
   const handleIframeError = useCallback(() => {
+    if (autoEndTriggered) return
+    
     console.error('Iframe failed to load')
     setHasError(true)
     setErrorMessage('Failed to load the conversation interface')
     setIsLoading(false)
-  }, [])
+  }, [autoEndTriggered])
 
   const handleManualComplete = useCallback(() => {
     console.log('User manually completing session')
