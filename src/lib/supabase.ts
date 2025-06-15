@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { crossDomainAuthStorage } from './auth-storage'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -9,23 +10,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storageKey: 'everythinglearn-auth',
-    storage: {
-      getItem: (key) => {
-        const cookies = document.cookie.split(';')
-        const cookie = cookies.find(c => c.trim().startsWith(`${key}=`))
-        return cookie ? cookie.split('=')[1] : null
-      },
-      setItem: (key, value) => {
-        document.cookie = `${key}=${value}; path=/; domain=.everythinglearn.online; secure; samesite=lax`
-      },
-      removeItem: (key) => {
-        document.cookie = `${key}=; path=/; domain=.everythinglearn.online; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=lax`
-      }
-    },
+    storageKey: 'everythinglearn-auth-token',
+    storage: crossDomainAuthStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    flowType: 'pkce'
   }
 })
 
