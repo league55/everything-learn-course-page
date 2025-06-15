@@ -58,7 +58,9 @@ function VideoCallComponent({
   const cleanupRef = useRef(false)
 
   // Get remote participant (AI expert)
-  const remoteParticipantId = participantIds.find(id => id !== 'local')
+  const remoteParticipantId = participantIds.find(id => 
+    id !== 'local' && (id === 'tavus-replica' || id.includes('tavus'))
+  )
   const remoteParticipant = useParticipant(remoteParticipantId)
 
   console.log('VideoCallComponent render:', {
