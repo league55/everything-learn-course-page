@@ -33,46 +33,13 @@ export function TavusIframeInterface({
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [sessionEnded, setSessionEnded] = useState(false)
   const [transcript, setTranscript] = useState<string>('')
-  const [tavusConversationId, setTavusConversationId] = useState<string>('')
+  const [tavusConversationId, setTavusConversationId] = useState<string>(conversationId)
 
   console.log('TavusIframeInterface initialized:', {
     conversationUrl,
     conversationType,
     conversationId
   })
-
-  // Fetch the Tavus conversation ID from our database record
-  useEffect(() => {
-    const fetchTavusConversationId = async () => {
-      try {
-        console.log('Fetching Tavus conversation ID for record:', conversationId)
-        
-        const { data, error } = await dbOperations.supabase
-          .from('video_conversations')
-          .select('tavus_conversation_id')
-          .eq('id', conversationId)
-          .single()
-
-        if (error) {
-          console.error('Failed to fetch conversation record:', error)
-          return
-        }
-
-        if (data?.tavus_conversation_id) {
-          console.log('Found Tavus conversation ID:', data.tavus_conversation_id)
-          setTavusConversationId(data.tavus_conversation_id)
-        } else {
-          console.warn('No Tavus conversation ID found in record')
-        }
-      } catch (error) {
-        console.error('Error fetching Tavus conversation ID:', error)
-      }
-    }
-
-    if (conversationId) {
-      fetchTavusConversationId()
-    }
-  }, [conversationId])
 
   // Force end conversation via Tavus API
   const forceEndConversation = useCallback(async () => {
