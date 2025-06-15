@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { useTheme } from '@/providers/theme-provider'
 import type { CourseConfiguration, Syllabus, UserEnrollment } from '@/lib/supabase'
 import { 
   BookOpen, 
@@ -14,7 +15,9 @@ import {
   Clock,
   Target,
   X,
-  List
+  List,
+  Moon,
+  Sun
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -45,6 +48,7 @@ export function CourseSidebar({
   const [expandedModules, setExpandedModules] = useState<Set<number>>(
     new Set([selectedModuleIndex])
   )
+  const { theme, setTheme } = useTheme()
 
   const toggleModule = (moduleIndex: number) => {
     const newExpanded = new Set(expandedModules)
@@ -72,6 +76,10 @@ export function CourseSidebar({
   }
 
   const totalProgress = Math.round((enrollment.current_module_index / syllabus.modules.length) * 100)
+
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light')
+  }
 
   // Close sidebar when clicking outside (mobile)
   useEffect(() => {
@@ -307,13 +315,29 @@ export function CourseSidebar({
         </div>
       </ScrollArea>
 
-      {/* Footer Info */}
+      {/* Footer Info with Theme Toggle */}
       <div className="p-4 border-t border-border">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
-          <span>
-            Started {new Date(enrollment.enrolled_at).toLocaleDateString()}
-          </span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>
+              Started {new Date(enrollment.enrolled_at).toLocaleDateString()}
+            </span>
+          </div>
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleTheme}
+            className="h-6 w-6 p-0 hover:bg-accent"
+            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          >
+            {theme === 'light' ? (
+              <Moon className="h-3 w-3" />
+            ) : (
+              <Sun className="h-3 w-3" />
+            )}
+          </Button>
         </div>
       </div>
     </>
