@@ -7,7 +7,8 @@ import type { CourseData } from './course-data-loader'
 
 interface UseCviSessionResult {
   showCviModal: boolean
-  dailyRoomUrl: string | null
+  conversationUrl: string | null
+  conversationId: string | null
   cviConversationType: 'practice' | 'exam'
   isInitiatingCvi: boolean
   handleInitiateTest: (conversationType: 'practice' | 'exam') => Promise<void>
@@ -22,7 +23,8 @@ export function useCviSession(
   setCourseReadyForCompletion: (ready: boolean) => void
 ): UseCviSessionResult {
   const [showCviModal, setShowCviModal] = useState(false)
-  const [dailyRoomUrl, setDailyRoomUrl] = useState<string | null>(null)
+  const [conversationUrl, setConversationUrl] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const [cviConversationType, setCviConversationType] = useState<'practice' | 'exam'>('practice')
   const [isInitiatingCvi, setIsInitiatingCvi] = useState(false)
 
@@ -67,10 +69,11 @@ export function useCviSession(
         throw new Error('No conversation URL received from Tavus')
       }
 
-      console.log('Setting Daily room URL:', response.conversation_url)
+      console.log('Setting conversation URL:', response.conversation_url)
 
-      // Set the Daily room URL from the Tavus response
-      setDailyRoomUrl(response.conversation_url)
+      // Set the conversation URL and ID from the Tavus response
+      setConversationUrl(response.conversation_url)
+      setConversationId(response.conversation_id)
       setShowFinalTestButton(false)
       setShowCviModal(true)
 
@@ -107,7 +110,8 @@ export function useCviSession(
       )
 
       setShowCviModal(false)
-      setDailyRoomUrl(null)
+      setConversationUrl(null)
+      setConversationId(null)
       setCourseReadyForCompletion(false)
       
       toast({
@@ -135,13 +139,15 @@ export function useCviSession(
   const handleCloseCvi = () => {
     console.log('Closing CVI modal')
     setShowCviModal(false)
-    setDailyRoomUrl(null)
+    setConversationUrl(null)
+    setConversationId(null)
     setShowFinalTestButton(true) // Allow them to try again
   }
 
   return {
     showCviModal,
-    dailyRoomUrl,
+    conversationUrl,
+    conversationId,
     cviConversationType,
     isInitiatingCvi,
     handleInitiateTest,

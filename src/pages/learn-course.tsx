@@ -16,7 +16,7 @@ import { CourseHeader } from '@/components/learn-course/course-header'
 import { CourseSidebar } from '@/components/course/course-sidebar'
 import { CourseContent } from '@/components/course/course-content'
 import { FinalTestButton } from '@/components/course/final-test-button'
-import { VideoConferenceInterface } from '@/components/course/video-conference-interface'
+import { TavusIframeInterface } from '@/components/course/tavus-iframe-interface'
 
 export function LearnCoursePage() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -69,7 +69,8 @@ export function LearnCoursePage() {
   // Manage CVI sessions
   const {
     showCviModal,
-    dailyRoomUrl,
+    conversationUrl,
+    conversationId,
     cviConversationType,
     isInitiatingCvi,
     handleInitiateTest,
@@ -168,10 +169,11 @@ export function LearnCoursePage() {
         />
       )}
 
-      {/* Video Conference Interface */}
-      {showCviModal && dailyRoomUrl && (
-        <VideoConferenceInterface
-          roomUrl={dailyRoomUrl}
+      {/* Tavus Iframe Interface */}
+      {showCviModal && conversationUrl && conversationId && (
+        <TavusIframeInterface
+          conversationUrl={conversationUrl}
+          conversationId={conversationId}
           conversationType={cviConversationType}
           onClose={handleCloseCvi}
           onComplete={handleCviComplete}

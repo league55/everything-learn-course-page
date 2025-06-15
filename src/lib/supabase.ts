@@ -695,4 +695,25 @@ export const dbOperations = {
   
       return data || []
     },
+
+    // Subscribe to conversation updates
+    subscribeToConversationUpdates(
+      conversationId: string,
+      callback: (payload: any) => void
+    ): { unsubscribe: () => void } {
+      const channel = supabase
+        .channel('conversation_updates')
+        .on('broadcast', { event: 'conversation_update' }, (payload) => {
+          if (payload.payload.conversation_id === conversationId) {
+            callback(payload.payload)
+          }
+        })
+        .subscribe()
+
+      return {
+        unsubscribe: () => {
+          supabase.removeChannel(channel)
+        }
+      }
+    }
 }

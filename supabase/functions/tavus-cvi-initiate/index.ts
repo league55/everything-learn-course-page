@@ -97,6 +97,7 @@ Deno.serve(async (req: Request) => {
         conversation_name: `${actualConversationType}_${courseTopic}_${userName}_${Date.now()}`,
         conversational_context: conversationalContext,
         custom_greeting: customGreeting,
+        webhook_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/tavus-webhook-handler`,
         properties: {
           max_call_duration: actualConversationType === 'exam' ? 1800 : 900, // 30 min for exam, 15 min for practice
           participant_left_timeout: 60,
