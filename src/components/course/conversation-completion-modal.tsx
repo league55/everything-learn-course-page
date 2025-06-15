@@ -124,8 +124,6 @@ export function ConversationCompletionModal({
             {onContinue && (
               <Button onClick={onContinue} className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
                 <Trophy className="h-4 w-4 mr-2" />
-            {onContinue && (
-              <Button onClick={onContinue} className="flex-1">
                 Complete & Continue
               </Button>
             )}
