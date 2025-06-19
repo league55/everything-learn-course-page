@@ -110,12 +110,102 @@ function fallbackCleanTextForTTS(text: string): string {
   return cleanText
 }
 
+function chunkText(text: string, maxChunkSize: number = 2500): string[] {
+  if (text.length <= maxChunkSize) {
+    return [text]
+  }
+
+  const chunks: string[] = []
+  const sentences = text.split(/[.!?]+/)
+  let currentChunk = ''
+
+  for (const sentence of sentences) {
+    const trimmedSentence = sentence.trim()
+    if (!trimmedSentence) continue
+
+    const sentenceWithPunctuation = trimmedSentence + '.'
+    
+    if ((currentChunk + sentenceWithPunctuation).length > maxChunkSize) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim())
+        currentChunk = sentenceWithPunctuation
+      } else {
+        // Single sentence is too long, force split
+        chunks.push(sentenceWithPunctuation.substring(0, maxChunkSize))
+      }
+    } else {
+      currentChunk += (currentChunk ? ' ' : '') + sentenceWithPunctuation
+    }
+  }
+
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim())
+  }
+
+  console.log(`Text split into ${chunks.length} chunks:`, chunks.map(c => c.length))
+  return chunks
+}
+
 async function generateAudioWithElevenLabs(
   text: string, 
   voiceId: string, 
   apiKey: string
 ): Promise<ElevenLabsResponse> {
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`
+  // Validate text length and quality
+  if (!text || text.trim().length < 10) {
+    throw new Error('Text is too short for audio generation')
+  }
+
+  // Clean up any remaining problematic characters
+  const cleanedText = text
+    .replace(/[^\w\s.,!?;:()\-'"]/g, ' ') // Remove special characters that might cause issues
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim()
+
+  console.log('Sending to ElevenLabs:')
+  console.log('- Text length:', cleanedText.length)
+  console.log('- Voice ID:', voiceId)
+  console.log('- First 100 chars:', cleanedText.substring(0, 100))
+  console.log('- Last 100 chars:', cleanedText.substring(Math.max(0, cleanedText.length - 100)))
+
+  // ElevenLabs has a limit of ~5000 characters per request
+  if (cleanedText.length > 4500) {
+    console.log('Text too long, chunking and using first chunk only')
+    const chunks = chunkText(cleanedText, 2500)
+    const firstChunk = chunks[0]
+    console.log('Using first chunk of length:', firstChunk.length)
+    return generateSingleAudioChunk(firstChunk, voiceId, apiKey)
+  }
+
+  return generateSingleAudioChunk(cleanedText, voiceId, apiKey)
+}
+
+async function generateSingleAudioChunk(
+  text: string,
+  voiceId: string,
+  apiKey: string
+): Promise<ElevenLabsResponse> {
+  // Use the non-streaming endpoint for better reliability
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`
+  
+  const requestBody = {
+    text: text,
+    model_id: 'eleven_multilingual_v2', // More reliable model
+    voice_settings: {
+      stability: 0.5,
+      similarity_boost: 0.8,
+      style: 0.2,
+      use_speaker_boost: true
+    },
+    output_format: 'mp3_44100_128' // Explicit format
+  }
+
+  console.log('ElevenLabs request body:', {
+    textLength: text.length,
+    model_id: requestBody.model_id,
+    voice_settings: requestBody.voice_settings,
+    output_format: requestBody.output_format
+  })
   
   const response = await fetch(url, {
     method: 'POST',
@@ -124,25 +214,30 @@ async function generateAudioWithElevenLabs(
       'Content-Type': 'application/json',
       'xi-api-key': apiKey,
     },
-    body: JSON.stringify({
-      text: text,
-      model_id: 'eleven_monolingual_v1',
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.5,
-        style: 0.0,
-        use_speaker_boost: true
-      }
-    }),
+    body: JSON.stringify(requestBody),
   })
+
+  console.log('ElevenLabs response status:', response.status)
+  console.log('ElevenLabs response headers:', Object.fromEntries(response.headers.entries()))
 
   if (!response.ok) {
     const errorText = await response.text()
+    console.error('ElevenLabs API error response:', errorText)
     throw new Error(`ElevenLabs API error (${response.status}): ${errorText}`)
   }
 
   const audioBuffer = await response.arrayBuffer()
   const audio = new Uint8Array(audioBuffer)
+  
+  console.log('Generated audio stats:')
+  console.log('- Audio buffer size:', audioBuffer.byteLength)
+  console.log('- Audio array length:', audio.length)
+  console.log('- Content type:', response.headers.get('content-type'))
+
+  if (audio.length < 1000) {
+    console.warn('Generated audio is suspiciously small:', audio.length, 'bytes')
+    console.warn('This might indicate an issue with the text or API call')
+  }
   
   return {
     audio,
@@ -185,6 +280,15 @@ Deno.serve(async (req: Request) => {
       voice_id = 'EXAVITQu4vr4xnSDxMaL' // Default ElevenLabs voice
     } = validatedRequest
 
+    console.log('Job details:', {
+      job_id,
+      course_id: course_configuration_id,
+      module: module_index,
+      topic: topic_index,
+      source_text_length: source_text.length,
+      voice_id
+    })
+
     // Update job status to processing
     await supabase
       .from('audio_generation_jobs')
@@ -204,6 +308,7 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log('Text cleaning completed. Cleaned text length:', cleanText.length)
+    console.log('Cleaned text preview (first 200 chars):', cleanText.substring(0, 200))
 
     // Generate audio with ElevenLabs
     const { audio, contentType } = await generateAudioWithElevenLabs(
@@ -214,9 +319,16 @@ Deno.serve(async (req: Request) => {
 
     console.log('Audio generated successfully, size:', audio.length)
 
+    // Validate audio size
+    if (audio.length < 1000) {
+      throw new Error(`Generated audio is too small (${audio.length} bytes). This likely indicates a problem with the text processing or ElevenLabs API response.`)
+    }
+
     // Generate file path
     const fileName = `course-${course_configuration_id}-module-${module_index}-topic-${topic_index}-${Date.now()}.mp3`
     const filePath = `courses/${course_configuration_id}/audio/${fileName}`
+
+    console.log('Uploading to storage path:', filePath)
 
     // Upload audio to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -228,6 +340,7 @@ Deno.serve(async (req: Request) => {
       })
 
     if (uploadError) {
+      console.error('Storage upload error:', uploadError)
       throw new Error(`Failed to upload audio: ${uploadError.message}`)
     }
 
@@ -238,9 +351,18 @@ Deno.serve(async (req: Request) => {
       .from('course-audio')
       .getPublicUrl(filePath)
 
+    console.log('Public URL generated:', urlData.publicUrl)
+
     // Calculate approximate duration based on cleaned text
     const wordCount = cleanText.split(/\s+/).length
     const estimatedDuration = (wordCount / 150) * 60 // seconds (150 words per minute)
+
+    console.log('Audio stats:', {
+      word_count: wordCount,
+      estimated_duration: estimatedDuration,
+      file_size: audio.length,
+      public_url: urlData.publicUrl
+    })
 
     // Update job with success
     const { error: updateError } = await supabase
@@ -269,7 +391,8 @@ Deno.serve(async (req: Request) => {
         audio_file_size: audio.length,
         duration_seconds: estimatedDuration,
         cleaned_text_length: cleanText.length,
-        original_text_length: source_text.length
+        original_text_length: source_text.length,
+        word_count: wordCount
       }),
       {
         status: 200,
