@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Settings } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 
 interface CourseHeaderProps {
   sidebarCollapsed: boolean
@@ -8,7 +7,9 @@ interface CourseHeaderProps {
 }
 
 export function CourseHeader({ sidebarCollapsed, onToggleSidebar }: CourseHeaderProps) {
-  const navigate = useNavigate()
+  const handleBackToCourses = () => {
+    window.location.href = 'https://everythinglearn.online/courses'
+  }
 
   return (
     <div className="border-b border-border p-4 bg-card md:block hidden">
@@ -24,7 +25,7 @@ export function CourseHeader({ sidebarCollapsed, onToggleSidebar }: CourseHeader
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/courses')}
+            onClick={handleBackToCourses}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Courses

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { dbOperations } from '@/lib/supabase'
 import { useAuth } from '@/providers/auth-provider'
 import { useToast } from '@/hooks/use-toast'
@@ -33,7 +32,6 @@ export function useCviSession(
   const [isInitiatingCvi, setIsInitiatingCvi] = useState(false)
 
   const { user } = useAuth()
-  const navigate = useNavigate()
   const { toast } = useToast()
 
   const handleInitiateTest = async (conversationType: 'practice' | 'exam') => {
@@ -128,7 +126,7 @@ export function useCviSession(
       
       // Navigate back to courses after a short delay
       setTimeout(() => {
-        navigate('/courses')
+        window.location.href = 'https://everythinglearn.online/courses'
       }, 2000)
 
     } catch (err) {

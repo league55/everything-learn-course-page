@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Loader2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 
 // Import our new components
 import { useCourseData } from '@/components/learn-course/course-data-loader'
@@ -21,7 +20,6 @@ import { VideoCallCongratulationsModal } from '@/components/course/video-call-co
 
 export function LearnCoursePage() {
   const { courseId } = useParams<{ courseId: string }>()
-  const navigate = useNavigate()
 
   // Navigation state
   const [selectedModuleIndex, setSelectedModuleIndex] = useState(0)
@@ -87,6 +85,10 @@ export function LearnCoursePage() {
     setCourseReadyForCompletion
   )
 
+  const handleBackToCourses = () => {
+    window.location.href = 'https://everythinglearn.online/courses'
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -107,7 +109,7 @@ export function LearnCoursePage() {
           </Alert>
           <Button 
             className="mt-4" 
-            onClick={() => navigate('/courses')}
+            onClick={handleBackToCourses}
             variant="outline"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />

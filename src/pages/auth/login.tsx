@@ -28,14 +28,18 @@ export function LoginPage() {
   const location = useLocation()
   const { user, loading: authLoading } = useAuth()
 
-  // Get the intended destination from location state
-  const from = location.state?.from?.pathname || '/courses'
+  // Get the intended destination from location state, default to external courses page
+  const from = location.state?.from?.pathname || 'https://everythinglearn.online/courses'
 
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && user) {
       console.log('User already authenticated, redirecting to:', from)
-      navigate(from, { replace: true })
+      if (from.startsWith('http')) {
+        window.location.href = from
+      } else {
+        navigate(from, { replace: true })
+      }
     }
   }, [user, authLoading, navigate, from])
 
@@ -107,7 +111,7 @@ export function LoginPage() {
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
           <CardDescription>
             Sign in to your Orion Path account
-            {from !== '/courses' && (
+            {!from.startsWith('http') && from !== 'https://everythinglearn.online/courses' && (
               <div className="mt-2 text-xs text-muted-foreground">
                 You'll be redirected to your course after signing in
               </div>

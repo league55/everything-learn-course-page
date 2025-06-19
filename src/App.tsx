@@ -30,16 +30,26 @@ function App() {
               } 
             />
             
-            {/* Default redirect - you can customize this based on your needs */}
+            {/* Default redirect - redirect to external courses page */}
             <Route 
               path="/" 
-              element={<Navigate to="/login" replace />} 
+              element={
+                <Navigate 
+                  to="https://everythinglearn.online/courses" 
+                  replace 
+                />
+              } 
             />
             
-            {/* Catch all route - redirect to login */}
+            {/* Catch all route - redirect to external courses page */}
             <Route 
               path="*" 
-              element={<Navigate to="/login" replace />} 
+              element={
+                <Navigate 
+                  to="https://everythinglearn.online/courses" 
+                  replace 
+                />
+              } 
             />
           </Routes>
           <Toaster />
