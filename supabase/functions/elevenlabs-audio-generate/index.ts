@@ -22,6 +22,94 @@ interface ElevenLabsResponse {
   contentType: string
 }
 
+interface AICleaningResponse {
+  success: boolean
+  cleaned_text: string
+  word_count: number
+  estimated_duration_minutes: number
+  removed_elements?: string[]
+  summary?: string
+  error?: string
+}
+
+async function cleanTextWithAI(
+  text: string,
+  supabaseUrl: string,
+  supabaseKey: string
+): Promise<string> {
+  console.log('Calling AI text cleaner for text length:', text.length)
+  
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/ai-text-cleaner`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: text,
+        context_type: 'comprehensive_content',
+        target_duration_minutes: 5
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`AI cleaning API error (${response.status}): ${errorText}`)
+    }
+
+    const data: AICleaningResponse = await response.json()
+    
+    if (!data.success) {
+      throw new Error(`AI cleaning failed: ${data.error}`)
+    }
+
+    console.log('AI cleaning successful:', {
+      originalLength: text.length,
+      cleanedLength: data.cleaned_text.length,
+      wordCount: data.word_count,
+      estimatedDuration: data.estimated_duration_minutes,
+      removedElements: data.removed_elements?.length || 0
+    })
+
+    return data.cleaned_text
+
+  } catch (error) {
+    console.error('AI cleaning failed, falling back to basic cleaning:', error)
+    
+    // Fallback to basic cleaning if AI fails
+    return fallbackCleanTextForTTS(text)
+  }
+}
+
+function fallbackCleanTextForTTS(text: string): string {
+  console.log('Using fallback text cleaning')
+  
+  // Basic markdown and formatting removal as fallback
+  let cleanText = text
+    .replace(/#{1,6}\s+/g, '') // Remove headers
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+    .replace(/\*(.*?)\*/g, '$1') // Remove italic
+    .replace(/`(.*?)`/g, '$1') // Remove inline code
+    .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '') // Remove images
+    .replace(/^\s*[-*+]\s+/gm, '') // Remove list markers
+    .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+    .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
+    .replace(/https?:\/\/[^\s]+/g, '') // Remove URLs
+    .replace(/\[[^\]]*\]/g, '') // Remove citation brackets
+    .replace(/\([^)]*\d{4}[^)]*\)/g, '') // Remove year citations
+    .trim()
+
+  // Limit length for TTS
+  if (cleanText.length > 5000) {
+    cleanText = cleanText.substring(0, 4900) + '...'
+  }
+
+  return cleanText
+}
+
 async function generateAudioWithElevenLabs(
   text: string, 
   voiceId: string, 
@@ -62,29 +150,6 @@ async function generateAudioWithElevenLabs(
   }
 }
 
-function cleanTextForTTS(text: string): string {
-  // Remove markdown formatting
-  let cleanText = text
-    .replace(/#{1,6}\s+/g, '') // Remove headers
-    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
-    .replace(/\*(.*?)\*/g, '$1') // Remove italic
-    .replace(/`(.*?)`/g, '$1') // Remove inline code
-    .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links, keep text
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '') // Remove images
-    .replace(/^\s*[-*+]\s+/gm, '') // Remove list markers
-    .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
-    .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
-    .trim()
-
-  // Limit length for TTS (ElevenLabs has limits)
-  if (cleanText.length > 5000) {
-    cleanText = cleanText.substring(0, 4900) + '...'
-  }
-
-  return cleanText
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -95,10 +160,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Get ElevenLabs API key
     const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY')
@@ -131,9 +196,14 @@ Deno.serve(async (req: Request) => {
 
     console.log('Starting audio generation for job:', job_id)
 
-    // Clean text for TTS
-    const cleanText = cleanTextForTTS(source_text)
-    console.log('Cleaned text length:', cleanText.length)
+    // Clean text using AI first, with fallback to basic cleaning
+    const cleanText = await cleanTextWithAI(source_text, supabaseUrl, supabaseKey)
+    
+    if (!cleanText || cleanText.length < 10) {
+      throw new Error('Cleaned text is too short or empty')
+    }
+
+    console.log('Text cleaning completed. Cleaned text length:', cleanText.length)
 
     // Generate audio with ElevenLabs
     const { audio, contentType } = await generateAudioWithElevenLabs(
@@ -168,9 +238,9 @@ Deno.serve(async (req: Request) => {
       .from('course-audio')
       .getPublicUrl(filePath)
 
-    // Calculate approximate duration (rough estimate: 150 words per minute, average 5 chars per word)
+    // Calculate approximate duration based on cleaned text
     const wordCount = cleanText.split(/\s+/).length
-    const estimatedDuration = (wordCount / 150) * 60 // seconds
+    const estimatedDuration = (wordCount / 150) * 60 // seconds (150 words per minute)
 
     // Update job with success
     const { error: updateError } = await supabase
@@ -197,7 +267,9 @@ Deno.serve(async (req: Request) => {
         job_id,
         audio_file_path: urlData.publicUrl,
         audio_file_size: audio.length,
-        duration_seconds: estimatedDuration
+        duration_seconds: estimatedDuration,
+        cleaned_text_length: cleanText.length,
+        original_text_length: source_text.length
       }),
       {
         status: 200,

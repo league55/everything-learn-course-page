@@ -10,6 +10,7 @@ import rehypeHighlight from 'rehype-highlight'
 import type { CourseConfiguration, SyllabusModule, SyllabusTopic, UserEnrollment } from '@/lib/supabase'
 import { AudioPlayer } from './audio-player'
 import { useAudioContent } from '@/components/learn-course/audio-content-manager'
+import { useToast } from '@/hooks/use-toast'
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -25,7 +26,8 @@ import {
   ExternalLink,
   Quote,
   ArrowLeft,
-  Volume2
+  Volume2,
+  AlertTriangle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import 'highlight.js/styles/github-dark.css'
@@ -59,6 +61,7 @@ export function CourseContent({
   onMarkComplete,
   onNavigate
 }: CourseContentProps) {
+  const { toast } = useToast()
   const canGoBack = moduleIndex > 0 || topicIndex > 0
   const canGoForward = moduleIndex < totalModules - 1 || topicIndex < module.topics.length - 1
   const isLastTopic = moduleIndex === totalModules - 1 && topicIndex === module.topics.length - 1
@@ -128,16 +131,41 @@ export function CourseContent({
 
   const parsedFullContent = parseFullContent(fullContent)
 
-  // Get text content for audio generation
+  // Get text content for audio generation with intelligent selection
   const getTextForAudio = () => {
-    if (parsedFullContent) {
+    // Prefer comprehensive content if available and substantial
+    if (parsedFullContent && parsedFullContent.content.length > 200) {
       return parsedFullContent.content
     }
+    
+    // Fall back to topic overview
     return topic.content
   }
 
   const handleAudioGeneration = () => {
     const textContent = getTextForAudio()
+    
+    // Check if the content is very short and warn user
+    if (textContent.length < 200) {
+      toast({
+        title: "Short Content Warning",
+        description: "The current content is quite brief. Consider generating comprehensive content first for a more detailed audio track.",
+        variant: "default",
+        duration: 5000,
+      })
+    }
+    
+    // Check if using topic overview vs comprehensive content
+    const isUsingOverview = !parsedFullContent || parsedFullContent.content.length <= 200
+    if (isUsingOverview) {
+      toast({
+        title: "Using Topic Overview",
+        description: "Audio will be generated from the topic overview. For a more detailed track, generate comprehensive content first.",
+        variant: "default",
+        duration: 4000,
+      })
+    }
+
     handleGenerateAudio(textContent)
   }
 
@@ -219,53 +247,56 @@ export function CourseContent({
             </div>
           </div>
 
-          {/* Keywords - Compact */}
-          {topic.keywords.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {topic.keywords.slice(0, 6).map((keyword, index) => (
-                <Badge key={index} variant="outline" className="text-xs px-2 py-0">
-                  {keyword}
-                </Badge>
-              ))}
-              {topic.keywords.length > 6 && (
-                <Badge variant="outline" className="text-xs px-2 py-0">
-                  +{topic.keywords.length - 6}
-                </Badge>
+          {/* Keywords and Audio Controls Row */}
+          <div className="flex items-center justify-between gap-4">
+            {/* Keywords - Compact */}
+            {topic.keywords.length > 0 && (
+              <div className="flex flex-wrap gap-1 flex-1">
+                {topic.keywords.slice(0, 6).map((keyword, index) => (
+                  <Badge key={index} variant="outline" className="text-xs px-2 py-0">
+                    {keyword}
+                  </Badge>
+                ))}
+                {topic.keywords.length > 6 && (
+                  <Badge variant="outline" className="text-xs px-2 py-0">
+                    +{topic.keywords.length - 6}
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            {/* Audio Controls - Compact */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {audioJob?.status === 'completed' && audioJob.audio_file_path ? (
+                <div className="w-64">
+                  <AudioPlayer
+                    audioUrl={audioJob.audio_file_path}
+                    duration={audioJob.duration_seconds || undefined}
+                    className="bg-primary/5 border-primary/20"
+                  />
+                </div>
+              ) : (
+                <Button
+                  onClick={handleAudioGeneration}
+                  disabled={isGeneratingAudio}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  {isGeneratingAudio ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="h-3 w-3" />
+                      Generate Audio
+                    </>
+                  )}
+                </Button>
               )}
             </div>
-          )}
-
-          {/* Audio Controls - Compact */}
-          <div className="flex items-center gap-2">
-            {audioJob?.status === 'completed' && audioJob.audio_file_path ? (
-              <div className="flex-1">
-                <AudioPlayer
-                  audioUrl={audioJob.audio_file_path}
-                  duration={audioJob.duration_seconds || undefined}
-                  className="bg-primary/5 border-primary/20"
-                />
-              </div>
-            ) : (
-              <Button
-                onClick={handleAudioGeneration}
-                disabled={isGeneratingAudio}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-              >
-                {isGeneratingAudio ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Generating Audio...
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="h-3 w-3" />
-                    Generate Audio
-                  </>
-                )}
-              </Button>
-            )}
           </div>
         </div>
       </div>
@@ -301,24 +332,37 @@ export function CourseContent({
                   className="bg-primary/5 border-primary/20"
                 />
               ) : (
-                <Button
-                  onClick={handleAudioGeneration}
-                  disabled={isGeneratingAudio}
-                  variant="outline"
-                  className="w-full flex items-center gap-2"
-                >
-                  {isGeneratingAudio ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Generating Audio...
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="h-4 w-4" />
-                      Generate Audio Track
-                    </>
+                <div className="space-y-2">
+                  <Button
+                    onClick={handleAudioGeneration}
+                    disabled={isGeneratingAudio}
+                    variant="outline"
+                    className="w-full flex items-center gap-2"
+                  >
+                    {isGeneratingAudio ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Generating Audio Track...
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="h-4 w-4" />
+                        Generate Audio Track
+                      </>
+                    )}
+                  </Button>
+                  
+                  {/* Audio Info for Mobile */}
+                  {!parsedFullContent && (
+                    <div className="flex items-start gap-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs text-amber-800 dark:text-amber-200">
+                        <p className="font-medium mb-1">Audio from Topic Overview</p>
+                        <p>Generate comprehensive content first for a more detailed audio track.</p>
+                      </div>
+                    </div>
                   )}
-                </Button>
+                </div>
               )}
             </div>
 
