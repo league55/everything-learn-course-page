@@ -237,6 +237,27 @@ export interface ContentGenerationJob {
   updated_at: string
 }
 
+// Audio generation types
+export interface AudioGenerationJob {
+  id: string
+  course_configuration_id: string
+  module_index: number
+  topic_index: number
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  source_text: string
+  voice_id: string
+  audio_file_path: string | null
+  audio_file_size: number | null
+  duration_seconds: number | null
+  error_message: string | null
+  retries: number
+  max_retries: number
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface CourseWithDetails extends CourseConfiguration {
   syllabus?: Syllabus
   generation_job?: SyllabusGenerationJob
@@ -746,6 +767,49 @@ export const dbOperations = {
     } catch (error) {
       throw new Error(`Failed to fetch full content: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
+  },
+
+  // Audio generation operations
+  async getTopicAudio(
+    courseId: string,
+    moduleIndex: number,
+    topicIndex: number
+  ): Promise<AudioGenerationJob | null> {
+    const { data, error } = await supabase
+      .rpc('get_topic_audio', {
+        p_course_id: courseId,
+        p_module_index: moduleIndex,
+        p_topic_index: topicIndex
+      })
+
+    if (error) {
+      throw new Error(`Failed to fetch topic audio: ${error.message}`)
+    }
+
+    return data?.[0] || null
+  },
+
+  async createAudioGenerationJob(
+    courseId: string,
+    moduleIndex: number,
+    topicIndex: number,
+    sourceText: string,
+    voiceId?: string
+  ): Promise<string> {
+    const { data, error } = await supabase
+      .rpc('create_audio_generation_job', {
+        p_course_id: courseId,
+        p_module_index: moduleIndex,
+        p_topic_index: topicIndex,
+        p_source_text: sourceText,
+        p_voice_id: voiceId
+      })
+
+    if (error) {
+      throw new Error(`Failed to create audio generation job: ${error.message}`)
+    }
+
+    return data
   },
 
   // File upload operations

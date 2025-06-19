@@ -8,6 +8,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import type { CourseConfiguration, SyllabusModule, SyllabusTopic, UserEnrollment } from '@/lib/supabase'
+import { AudioPlayer } from './audio-player'
+import { useAudioContent } from '@/components/learn-course/audio-content-manager'
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -22,7 +24,8 @@ import {
   Info,
   ExternalLink,
   Quote,
-  ArrowLeft
+  ArrowLeft,
+  Volume2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import 'highlight.js/styles/github-dark.css'
@@ -59,6 +62,13 @@ export function CourseContent({
   const canGoBack = moduleIndex > 0 || topicIndex > 0
   const canGoForward = moduleIndex < totalModules - 1 || topicIndex < module.topics.length - 1
   const isLastTopic = moduleIndex === totalModules - 1 && topicIndex === module.topics.length - 1
+
+  // Audio content management
+  const {
+    audioJob,
+    isGeneratingAudio,
+    handleGenerateAudio
+  } = useAudioContent(course.id, moduleIndex, topicIndex)
 
   const handlePrevious = () => {
     if (topicIndex > 0) {
@@ -117,6 +127,19 @@ export function CourseContent({
   }
 
   const parsedFullContent = parseFullContent(fullContent)
+
+  // Get text content for audio generation
+  const getTextForAudio = () => {
+    if (parsedFullContent) {
+      return parsedFullContent.content
+    }
+    return topic.content
+  }
+
+  const handleAudioGeneration = () => {
+    const textContent = getTextForAudio()
+    handleGenerateAudio(textContent)
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -211,6 +234,39 @@ export function CourseContent({
               )}
             </div>
           )}
+
+          {/* Audio Controls - Compact */}
+          <div className="flex items-center gap-2">
+            {audioJob?.status === 'completed' && audioJob.audio_file_path ? (
+              <div className="flex-1">
+                <AudioPlayer
+                  audioUrl={audioJob.audio_file_path}
+                  duration={audioJob.duration_seconds || undefined}
+                  className="bg-primary/5 border-primary/20"
+                />
+              </div>
+            ) : (
+              <Button
+                onClick={handleAudioGeneration}
+                disabled={isGeneratingAudio}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                {isGeneratingAudio ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Generating Audio...
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="h-3 w-3" />
+                    Generate Audio
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -235,6 +291,36 @@ export function CourseContent({
                 </div>
               </div>
             )}
+
+            {/* Mobile Audio Controls */}
+            <div className="md:hidden mb-6">
+              {audioJob?.status === 'completed' && audioJob.audio_file_path ? (
+                <AudioPlayer
+                  audioUrl={audioJob.audio_file_path}
+                  duration={audioJob.duration_seconds || undefined}
+                  className="bg-primary/5 border-primary/20"
+                />
+              ) : (
+                <Button
+                  onClick={handleAudioGeneration}
+                  disabled={isGeneratingAudio}
+                  variant="outline"
+                  className="w-full flex items-center gap-2"
+                >
+                  {isGeneratingAudio ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating Audio...
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="h-4 w-4" />
+                      Generate Audio Track
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
 
             {/* Topic Overview */}
             <div className="mb-6 md:mb-8">
