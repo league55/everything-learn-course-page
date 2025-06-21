@@ -1,5 +1,6 @@
 import { dbOperations } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
+import { generateMockExaminationResults } from '@/lib/certificate-api'
 import type { CourseData } from './course-data-loader'
 
 interface UseCourseProgressResult {
@@ -26,7 +27,7 @@ export function useCourseProgress(
     // Update progress if user has advanced
     if (courseData?.enrollment && moduleIndex > courseData.enrollment.current_module_index) {
       try {
-        await dbOperations.updateCourseProgress(
+        const result = await dbOperations.updateCourseProgress(
           courseData.enrollment.id,
           moduleIndex
         )
@@ -34,10 +35,7 @@ export function useCourseProgress(
         // Update local state
         setCourseData(prev => prev ? {
           ...prev,
-          enrollment: {
-            ...prev.enrollment,
-            current_module_index: moduleIndex
-          }
+          enrollment: result.enrollment
         } : null)
 
         toast({
@@ -73,7 +71,7 @@ export function useCourseProgress(
         // Update progress to next module/topic
         const nextModuleIndex = isLastTopic ? selectedModuleIndex + 1 : selectedModuleIndex
         
-        await dbOperations.updateCourseProgress(
+        const result = await dbOperations.updateCourseProgress(
           courseData.enrollment.id,
           nextModuleIndex
         )
@@ -81,10 +79,7 @@ export function useCourseProgress(
         // Update local state
         setCourseData(prev => prev ? {
           ...prev,
-          enrollment: {
-            ...prev.enrollment,
-            current_module_index: nextModuleIndex
-          }
+          enrollment: result.enrollment
         } : null)
 
         // Navigate to next topic/module

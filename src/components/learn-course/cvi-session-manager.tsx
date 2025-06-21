@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { dbOperations } from '@/lib/supabase'
 import { useAuth } from '@/providers/auth-provider'
 import { useToast } from '@/hooks/use-toast'
+import { generateMockExaminationResults } from '@/lib/certificate-api'
 import type { CourseData } from './course-data-loader'
 
 interface UseCviSessionResult {
@@ -104,11 +105,20 @@ export function useCviSession(
     try {
       console.log('Completing course with transcript:', transcript?.substring(0, 100))
 
-      // Mark the course as completed in the database
-      await dbOperations.updateCourseProgress(
+      // Generate mock examination results for certificate issuance
+      const examinationResults = generateMockExaminationResults(
+        courseData.enrollment.user_id,
+        courseData.configuration.id,
+        courseData.syllabus.modules.length,
+        120 // 2 hours completion time
+      )
+
+      // Mark the course as completed and issue certificate
+      const result = await dbOperations.updateCourseProgress(
         courseData.enrollment.id,
         selectedModuleIndex,
-        true // Mark as completed
+        true, // Mark as completed
+        examinationResults // Pass examination results for certificate issuance
       )
 
       // Close all modals
@@ -118,16 +128,25 @@ export function useCviSession(
       setConversationId(null)
       setCourseReadyForCompletion(false)
       
-      toast({
-        title: "Congratulations!",
-        description: "You have successfully completed the course!",
-        duration: 5000,
-      })
+      // Show success message with certificate info
+      if (result.certificate) {
+        toast({
+          title: "🎓 Certificate Issued!",
+          description: `Congratulations! Certificate ${result.certificate.certificateId} has been issued for completing "${courseData.configuration.topic}".`,
+          duration: 8000,
+        })
+      } else {
+        toast({
+          title: "Course Completed!",
+          description: "You have successfully completed the course!",
+          duration: 5000,
+        })
+      }
       
       // Navigate back to courses after a short delay
       setTimeout(() => {
         window.location.href = 'https://everythinglearn.online/courses'
-      }, 2000)
+      }, 3000)
 
     } catch (err) {
       console.error('Failed to complete course:', err)

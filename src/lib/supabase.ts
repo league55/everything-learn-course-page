@@ -1,10 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
-import { crossDomainAuthStorage } from './auth-storage'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-// Cookie utility functions
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
@@ -57,7 +54,6 @@ function getCookieAttributes(): string {
   
   return attributes
 }
-
 
 // Create a custom storage implementation
 const customStorage = {
@@ -433,12 +429,13 @@ export const dbOperations = {
     return data
   },
 
-  // Update user progress in a course
+  // Update user progress in a course with optional certificate issuance
   async updateCourseProgress(
     enrollmentId: string, 
     moduleIndex: number,
-    completed: boolean = false
-  ): Promise<UserEnrollment> {
+    completed: boolean = false,
+    examinationResults?: import('./certificate-api').ExaminationTranscript
+  ): Promise<{ enrollment: UserEnrollment; certificate?: import('./certificate-api').CertificateData }> {
     const updateData: any = {
       current_module_index: moduleIndex
     }
@@ -448,7 +445,7 @@ export const dbOperations = {
       updateData.completed_at = new Date().toISOString()
     }
 
-    const { data, error } = await supabase
+    const { data: enrollment, error } = await supabase
       .from('user_enrollments')
       .update(updateData)
       .eq('id', enrollmentId)
@@ -459,7 +456,35 @@ export const dbOperations = {
       throw new Error(`Failed to update course progress: ${error.message}`)
     }
 
-    return data
+    let certificate: import('./certificate-api').CertificateData | undefined
+
+    // Issue certificate if course is completed
+    if (completed && examinationResults) {
+      try {
+        const { getCertificateAPI, generateMockExaminationResults } = await import('./certificate-api')
+        
+        // Use provided examination results or generate mock data
+        const finalExaminationResults = examinationResults || generateMockExaminationResults(
+          enrollment.user_id,
+          enrollment.course_configuration_id,
+          moduleIndex + 1, // Total modules completed
+          120 // 2 hours default completion time
+        )
+
+        certificate = await getCertificateAPI().onExaminationCompletion(
+          enrollment.user_id,
+          enrollment.course_configuration_id,
+          finalExaminationResults
+        )
+
+        console.log('Certificate issued successfully:', certificate.certificateId)
+      } catch (certificateError) {
+        console.error('Failed to issue certificate:', certificateError)
+        // Don't fail the progress update if certificate issuance fails
+      }
+    }
+
+    return { enrollment, certificate }
   },
 
   // Get syllabus for a course configuration
@@ -848,34 +873,34 @@ export const dbOperations = {
     }
   },
   
-    // Tavus CVI operations
-    async initiateTavusCviSession(
-      courseId: string,
-      userId: string,
-      userName: string,
-      courseDepth: number,
-      conversationType: 'practice' | 'exam',
-      courseTopic: string,
-      moduleSummary: string
-    ): Promise<{ conversation_id: string; conversation_url: string; replica_id: string; status: string }> {
-      const { data, error } = await supabase.functions.invoke('tavus-cvi-initiate', {
-        body: {
-          courseId,
-          userId,
-          userName,
-          courseDepth,
-          conversationType,
-          courseTopic,
-          moduleSummary
-        }
-      })
-  
-      if (error) {
-        throw new Error(`Failed to initiate CVI session: ${error.message}`)
+  // Tavus CVI operations
+  async initiateTavusCviSession(
+    courseId: string,
+    userId: string,
+    userName: string,
+    courseDepth: number,
+    conversationType: 'practice' | 'exam',
+    courseTopic: string,
+    moduleSummary: string
+  ): Promise<{ conversation_id: string; conversation_url: string; replica_id: string; status: string }> {
+    const { data, error } = await supabase.functions.invoke('tavus-cvi-initiate', {
+      body: {
+        courseId,
+        userId,
+        userName,
+        courseDepth,
+        conversationType,
+        courseTopic,
+        moduleSummary
       }
-  
-      return data
-    },
+    })
+
+    if (error) {
+      throw new Error(`Failed to initiate CVI session: ${error.message}`)
+    }
+
+    return data
+  },
 
   // Add supabase client access for edge function calls
   supabase,
@@ -895,24 +920,39 @@ export const dbOperations = {
     return data || []
   },
 
-    // Subscribe to conversation updates
-    subscribeToConversationUpdates(
-      conversationId: string,
-      callback: (payload: any) => void
-    ): { unsubscribe: () => void } {
-      const channel = supabase
-        .channel('conversation_updates')
-        .on('broadcast', { event: 'conversation_update' }, (payload) => {
-          if (payload.payload.conversation_id === conversationId) {
-            callback(payload.payload)
-          }
-        })
-        .subscribe()
-
-      return {
-        unsubscribe: () => {
-          supabase.removeChannel(channel)
+  // Subscribe to conversation updates
+  subscribeToConversationUpdates(
+    conversationId: string,
+    callback: (payload: any) => void
+  ): { unsubscribe: () => void } {
+    const channel = supabase
+      .channel('conversation_updates')
+      .on('broadcast', { event: 'conversation_update' }, (payload) => {
+        if (payload.payload.conversation_id === conversationId) {
+          callback(payload.payload)
         }
+      })
+      .subscribe()
+
+    return {
+      unsubscribe: () => {
+        supabase.removeChannel(channel)
       }
     }
+  }
+}
+
+// Video conversation interface
+export interface VideoConversation {
+  id: string
+  user_id: string
+  course_id: string
+  conversation_type: 'practice' | 'exam'
+  tavus_replica_id: string
+  tavus_conversation_id: string
+  status: 'initiated' | 'active' | 'ended' | 'failed'
+  session_log: Record<string, any>
+  error_message: string | null
+  created_at: string
+  updated_at: string
 }
