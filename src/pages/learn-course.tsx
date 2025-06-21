@@ -89,6 +89,11 @@ export function LearnCoursePage() {
     window.location.href = 'https://everythinglearn.online/courses'
   }
 
+  const handleCloseFinalTestButton = () => {
+    setShowFinalTestButton(false)
+    // Optionally, you can add a toast message or other feedback here
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -171,6 +176,7 @@ export function LearnCoursePage() {
           course={courseData.configuration}
           enrollment={courseData.enrollment}
           onTestInitiate={handleInitiateTest}
+          onClose={handleCloseFinalTestButton}
           isLoading={isInitiatingCvi}
         />
       )}

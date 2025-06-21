@@ -11,7 +11,8 @@ import {
   Clock, 
   CheckCircle,
   Sparkles,
-  Award
+  Award,
+  X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +20,7 @@ interface FinalTestButtonProps {
   course: CourseConfiguration
   enrollment: UserEnrollment
   onTestInitiate: (conversationType: 'practice' | 'exam') => void
+  onClose: () => void
   isLoading?: boolean
 }
 
@@ -26,6 +28,7 @@ export function FinalTestButton({
   course, 
   enrollment, 
   onTestInitiate, 
+  onClose,
   isLoading = false 
 }: FinalTestButtonProps) {
   const { user } = useAuth()
@@ -55,7 +58,18 @@ export function FinalTestButton({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-2xl bg-card/95 backdrop-blur-sm border-2 border-primary/20 shadow-2xl">
+      <Card className="w-full max-w-2xl bg-card/95 backdrop-blur-sm border-2 border-primary/20 shadow-2xl relative">
+        {/* Close button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          className="absolute top-4 right-4 h-8 w-8 p-0 hover:bg-muted"
+          disabled={isLoading}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+
         <CardHeader className="text-center pb-6">
           <div className="mx-auto h-16 w-16 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-4">
             {isExam ? (
@@ -169,7 +183,7 @@ export function FinalTestButton({
           <div className="flex flex-col sm:flex-row gap-3 pt-4">
             <Button
               variant="outline"
-              onClick={() => window.history.back()}
+              onClick={onClose}
               className="flex-1"
               disabled={isLoading}
             >
