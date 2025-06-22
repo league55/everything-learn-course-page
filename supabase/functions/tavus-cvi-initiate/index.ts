@@ -111,7 +111,6 @@ Deno.serve(async (req: Request) => {
         conversational_context: conversationalContext,
         custom_greeting: customGreeting,
         webhook_url: webhookUrl,
-        webhook_events: webhookEvents,
         properties: {
           max_call_duration: actualConversationType === 'exam' ? 1800 : 900, // 30 min for exam, 15 min for practice
           participant_left_timeout: 60,
