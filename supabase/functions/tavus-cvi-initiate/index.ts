@@ -84,7 +84,20 @@ Deno.serve(async (req: Request) => {
       contextLength: conversationalContext.length
     })
 
-    // Call Tavus API to create conversation using correct endpoint and headers
+    // Prepare webhook configuration
+    const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/tavus-webhook-handler`
+    const webhookEvents = [
+      "conversation.started",
+      "conversation.ended", 
+      "application.transcription_ready"
+    ]
+
+    console.log('Webhook configuration:', {
+      webhook_url: webhookUrl,
+      webhook_events: webhookEvents
+    })
+
+    // Call Tavus API to create conversation with webhook configuration
     const tavusResponse = await fetch('https://tavusapi.com/v2/conversations', {
       method: 'POST',
       headers: {
@@ -97,7 +110,8 @@ Deno.serve(async (req: Request) => {
         conversation_name: `${actualConversationType}_${courseTopic}_${userName}_${Date.now()}`,
         conversational_context: conversationalContext,
         custom_greeting: customGreeting,
-        webhook_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/tavus-webhook-handler`,
+        webhook_url: webhookUrl,
+        webhook_events: webhookEvents,
         properties: {
           max_call_duration: actualConversationType === 'exam' ? 1800 : 900, // 30 min for exam, 15 min for practice
           participant_left_timeout: 60,
@@ -130,11 +144,15 @@ Deno.serve(async (req: Request) => {
         tavus_replica_id: replicaId,
         tavus_conversation_id: tavusData.conversation_id,
         status: 'initiated',
+        evaluation_status: actualConversationType === 'exam' ? 'pending' : null,
         session_log: {
           created_at: new Date().toISOString(),
           conversation_url: tavusData.conversation_url,
           initial_script: conversationalContext,
           custom_greeting: customGreeting,
+          webhook_configured: true,
+          webhook_url: webhookUrl,
+          webhook_events: webhookEvents,
           tavus_response: tavusData
         }
       })

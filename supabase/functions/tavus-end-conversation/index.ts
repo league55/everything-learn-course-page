@@ -12,21 +12,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
 }
 
-interface TavusTranscriptResponse {
-  conversation_id: string
-  conversation_name: string
-  status: string
-  properties: {
-    transcript?: Array<{
-      role: string
-      content: string
-      timestamp: number
-    }>
-    duration?: number
-    ended_reason?: string
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -69,7 +54,7 @@ Deno.serve(async (req: Request) => {
       throw new Error('Conversation not found in database')
     }
 
-    // End the conversation first
+    // Call Tavus API to end the conversation
     const tavusEndResponse = await fetch(`https://tavusapi.com/v2/conversations/${tavus_conversation_id}/end`, {
       method: 'POST',
       headers: {
@@ -94,49 +79,20 @@ Deno.serve(async (req: Request) => {
 
     console.log('Tavus conversation ended successfully')
 
-    // Wait a moment for Tavus to process the conversation
-    await new Promise(resolve => setTimeout(resolve, 3000))
-
-    // Fetch detailed conversation data with transcript
-    console.log('Fetching conversation transcript...')
-    const transcriptResponse = await fetch(`https://tavusapi.com/v2/conversations/${tavus_conversation_id}?verbose=true`, {
-      method: 'GET',
-      headers: {
-        'x-api-key': tavusApiKey,
-        'Content-Type': 'application/json',
-      },
-    })
-
-    let transcript = null
-    let conversationDuration = 0
-    let endedReason = 'user_action'
-
-    if (transcriptResponse.ok) {
-      const transcriptData: TavusTranscriptResponse = await transcriptResponse.json()
-      console.log('Transcript fetched successfully:', {
-        hasTranscript: !!transcriptData.properties?.transcript,
-        transcriptLength: transcriptData.properties?.transcript?.length || 0,
-        duration: transcriptData.properties?.duration
-      })
-
-      transcript = transcriptData.properties?.transcript || []
-      conversationDuration = transcriptData.properties?.duration || 0
-      endedReason = transcriptData.properties?.ended_reason || 'user_action'
-    } else {
-      console.warn('Failed to fetch transcript:', await transcriptResponse.text())
-    }
-
-    // Update conversation status in database with transcript
+    // Update conversation status in database (transcript will be handled by webhook)
     const updateData = {
-      status: 'ended',
+      status: 'ending', // Intermediate status while waiting for webhook
       session_log: {
         ...conversation.session_log,
         ended_at: new Date().toISOString(),
         ended_by: 'user_action',
-        transcript: transcript,
-        duration: conversationDuration,
-        ended_reason: endedReason
+        awaiting_transcript: true
       }
+    }
+
+    // For exam conversations, mark as waiting for evaluation
+    if (conversation.conversation_type === 'exam') {
+      updateData.session_log.awaiting_evaluation = true
     }
 
     const { error: updateError } = await supabase
@@ -148,42 +104,14 @@ Deno.serve(async (req: Request) => {
       console.warn('Failed to update conversation status in database:', updateError)
     }
 
-    // Trigger evaluation if this is an exam and we have a transcript
-    if (conversation.conversation_type === 'exam' && transcript && transcript.length > 0) {
-      console.log('Triggering conversation evaluation for exam...')
-      try {
-        const evaluationUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/evaluate-conversation`
-        const evaluationResponse = await fetch(evaluationUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            conversation_id: tavus_conversation_id,
-            user_id: conversation.user_id,
-            course_id: conversation.course_id
-          })
-        })
-
-        if (!evaluationResponse.ok) {
-          console.warn('Failed to trigger evaluation:', await evaluationResponse.text())
-        } else {
-          console.log('Evaluation triggered successfully')
-        }
-      } catch (evaluationError) {
-        console.warn('Failed to trigger evaluation:', evaluationError)
-      }
-    }
-
     return new Response(
       JSON.stringify({ 
         success: true, 
         conversation_id: tavus_conversation_id,
-        status: 'ended',
-        transcript_length: transcript?.length || 0,
-        duration: conversationDuration,
-        evaluation_triggered: conversation.conversation_type === 'exam' && transcript && transcript.length > 0
+        status: 'ending',
+        message: 'Conversation ended. Transcript and evaluation will be processed asynchronously.',
+        awaiting_transcript: true,
+        awaiting_evaluation: conversation.conversation_type === 'exam'
       }),
       {
         status: 200,
