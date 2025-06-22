@@ -17,6 +17,7 @@ import { CourseContent } from '@/components/course/course-content'
 import { FinalTestButton } from '@/components/course/final-test-button'
 import { TavusIframeInterface } from '@/components/course/tavus-iframe-interface'
 import { VideoCallCongratulationsModal } from '@/components/course/video-call-congratulations-modal'
+import { EvaluationResultsModal } from '@/components/course/evaluation-results-modal'
 
 export function LearnCoursePage() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -65,19 +66,25 @@ export function LearnCoursePage() {
     setCourseReadyForCompletion
   )
 
-  // Manage CVI sessions
+  // Manage CVI sessions with enhanced evaluation support
   const {
     showCviModal,
     showCongratulationsModal,
+    showEvaluationModal,
     conversationUrl,
     conversationId,
     cviConversationType,
     isInitiatingCvi,
+    evaluationResult,
+    certificateGenerated,
+    certificateId,
     handleInitiateTest,
     handleCviComplete,
     handleCloseCvi,
     handleCongratulationsClose,
-    handleCongratulationsComplete
+    handleCongratulationsComplete,
+    handleEvaluationClose,
+    handleEvaluationContinue
   } = useCviSession(
     courseData,
     selectedModuleIndex,
@@ -91,7 +98,6 @@ export function LearnCoursePage() {
 
   const handleCloseFinalTestButton = () => {
     setShowFinalTestButton(false)
-    // Optionally, you can add a toast message or other feedback here
   }
 
   if (loading) {
@@ -189,6 +195,18 @@ export function LearnCoursePage() {
           conversationType={cviConversationType}
           onClose={handleCloseCvi}
           onComplete={handleCviComplete}
+        />
+      )}
+
+      {/* Evaluation Results Modal - Shows AI evaluation for exams */}
+      {showEvaluationModal && evaluationResult && (
+        <EvaluationResultsModal
+          evaluation={evaluationResult}
+          certificateGenerated={certificateGenerated}
+          certificateId={certificateId}
+          courseName={courseData.configuration.topic}
+          onClose={handleEvaluationClose}
+          onContinue={handleEvaluationContinue}
         />
       )}
 
