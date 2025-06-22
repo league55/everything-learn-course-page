@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@^2.39.1';
 import { z } from 'npm:zod@^3.23.8';
+import { EdgeCertificateAPI, generateMockExaminationResults } from './certificate-service.ts';
+
 // Request validation schema
 const EvaluationRequestSchema = z.object({
   conversation_id: z.string().min(1),
@@ -293,39 +295,21 @@ Deno.serve(async (req)=>{
     if (qualifiesForCertificate) {
       console.log('Score qualifies for certificate, generating...');
       try {
+        // Initialize certificate API
+        const certificateAPI = new EdgeCertificateAPI(supabaseUrl, supabaseKey);
+        
         // Generate mock examination results for certificate
-        const examinationResults = {
-          studentId: user_id,
-          courseId: course_id,
-          moduleResults: [
-            {
-              moduleIndex: 0,
-              moduleName: course.topic,
-              score: evaluation.score,
-              maxScore: 100,
-              questionsAnswered: transcript.filter((t)=>t.role === 'user').length,
-              correctAnswers: Math.round(evaluation.score / 100 * transcript.filter((t)=>t.role === 'user').length),
-              timeSpent: conversation.session_log?.duration || 900,
-              topics: [
-                {
-                  topicIndex: 0,
-                  topicName: course.topic,
-                  score: evaluation.score,
-                  maxScore: 100,
-                  understanding: evaluation.score >= 90 ? 'excellent' : evaluation.score >= 80 ? 'good' : evaluation.score >= 70 ? 'fair' : 'poor'
-                }
-              ]
-            }
-          ],
-          totalScore: evaluation.score,
-          maxPossibleScore: 100,
-          completionDate: new Date().toISOString(),
-          timeSpent: conversation.session_log?.duration || 900,
-          examType: 'final'
-        };
-        // Call certificate API
-        const { getCertificateAPI } = await import('../../../src/lib/certificate-api.ts');
-        certificate = await getCertificateAPI().onExaminationCompletion(user_id, course_id, examinationResults);
+        const examinationResults = generateMockExaminationResults(
+          user_id,
+          course_id,
+          evaluation.score,
+          100,
+          course.topic,
+          conversation.session_log?.duration || 900
+        );
+        
+        // Issue certificate
+        certificate = await certificateAPI.onExaminationCompletion(user_id, course_id, examinationResults);
         console.log('Certificate generated successfully:', certificate.certificateId);
       } catch (certificateError) {
         console.error('Failed to generate certificate:', certificateError);
