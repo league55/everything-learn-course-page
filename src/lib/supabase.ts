@@ -411,22 +411,36 @@ export const dbOperations = {
     }))
   },
 
-  // Enroll user in a course
+  // Enroll user in a course using smart enrollment
   async enrollInCourse(courseConfigurationId: string): Promise<UserEnrollment> {
-    const { data, error } = await supabase
-      .from('user_enrollments')
-      .insert({
-        course_configuration_id: courseConfigurationId,
-        user_id: (await supabase.auth.getUser()).data.user?.id
-      })
-      .select()
-      .single()
-
-    if (error) {
-      throw new Error(`Failed to enroll in course: ${error.message}`)
+    const user = (await supabase.auth.getUser()).data.user
+    if (!user) {
+      throw new Error('User not authenticated')
     }
 
-    return data
+    // Use the smart enrollment function that handles re-enrollment
+    const { data: enrollmentId, error: functionError } = await supabase
+      .rpc('smart_course_enrollment', {
+        p_user_id: user.id,
+        p_course_configuration_id: courseConfigurationId
+      })
+
+    if (functionError) {
+      throw new Error(`Failed to enroll in course: ${functionError.message}`)
+    }
+
+    // Fetch the created enrollment
+    const { data: enrollment, error: fetchError } = await supabase
+      .from('user_enrollments')
+      .select('*')
+      .eq('id', enrollmentId)
+      .single()
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch enrollment: ${fetchError.message}`)
+    }
+
+    return enrollment
   },
 
   // Update user progress in a course with optional certificate issuance
