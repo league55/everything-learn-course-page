@@ -1,12 +1,12 @@
-import { createClient } from 'npm:@supabase/supabase-js@^2.39.1'
-import { z } from 'npm:zod@^3.23.8'
+import { createClient } from 'npm:@supabase/supabase-js@^2.39.1';
+import { z } from 'npm:zod@^3.23.8';
 
 // Request validation schema
 const EvaluationRequestSchema = z.object({
   conversation_id: z.string().min(1),
   user_id: z.string().uuid(),
   course_id: z.string().uuid()
-})
+});
 
 // Evaluation result schema
 const EvaluationResultSchema = z.object({
@@ -21,122 +21,128 @@ const EvaluationResultSchema = z.object({
   impactful_quotes: z.array(z.string()).min(1).max(5),
   overall_assessment: z.string().min(50).max(500),
   recommendations: z.array(z.string()).min(1).max(3)
-})
+});
 
-// Tavus API response schema
+// CORRECTED Tavus API response schema
 const TavusConversationSchema = z.object({
   conversation_id: z.string(),
+  conversation_name: z.string(),
+  conversation_url: z.string(),
+  conversational_context: z.string().nullable().optional(),
+  callback_url: z.string(),
   status: z.string(),
-  participant_count: z.number().optional(),
+  replica_id: z.string(),
+  persona_id: z.string(),
   created_at: z.string(),
-  properties: z.object({
-    transcript: z.array(z.object({
-      participant_id: z.string(),
-      content: z.string(),
-      timestamp: z.number(),
-      role: z.string().optional()
-    })).optional()
-  }).optional()
-})
+  updated_at: z.string(),
+  events: z.array(
+    z.object({
+      created_at: z.string(),
+      updated_at: z.string(),
+      event_type: z.string(),
+      message_type: z.string(),
+      properties: z
+        .object({
+          transcript: z
+            .array(
+              z.object({
+                content: z.string(),
+                role: z.string(),
+              })
+            )
+            .optional(),
+          analysis: z.string().optional(),
+          duration: z.number().optional(),
+          ended_reason: z.string().optional(),
+          replica_id: z.string().optional(),
+          shutdown_reason: z.string().optional(),
+        })
+        .optional(),
+      timestamp: z.string(),
+    })
+  ),
+});
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
-}
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey'
+};
 
-interface OpenAIResponse {
-  choices: Array<{
-    message: {
-      content: string
-    }
-  }>
-}
-
-async function fetchTranscriptFromTavus(
-  conversationId: string,
-  apiKey: string
-): Promise<any[]> {
-  console.log('Fetching transcript from Tavus API for conversation:', conversationId)
-  
+async function fetchTranscriptFromTavus(conversationId, apiKey) {
+  console.log('Fetching transcript from Tavus API for conversation:', conversationId);
   const response = await fetch(`https://tavusapi.com/v2/conversations/${conversationId}?verbose=true`, {
     method: 'GET',
     headers: {
       'x-api-key': apiKey,
-      'Content-Type': 'application/json',
-    },
-  })
-
+      'Content-Type': 'application/json'
+    }
+  });
+  
   if (!response.ok) {
-    const errorText = await response.text()
+    const errorText = await response.text();
     console.error('Tavus API error:', {
       status: response.status,
       statusText: response.statusText,
       body: errorText
-    })
-    throw new Error(`Tavus API error (${response.status}): ${errorText}`)
+    });
+    throw new Error(`Tavus API error (${response.status}): ${errorText}`);
   }
-
-  const data = await response.json()
-  console.log('Tavus API response received, parsing...')
-
-  // Validate the response structure
-  const validatedData = TavusConversationSchema.parse(data)
   
-  if (!validatedData.properties?.transcript) {
-    throw new Error('No transcript available in Tavus API response')
+  const data = await response.json();
+  console.log('Tavus API response received, parsing...');
+  
+  // Validate against corrected schema
+  const validatedData = TavusConversationSchema.parse(data);
+  
+  // Extract transcript from events
+  const transcriptEvent = validatedData.events.find(
+    e => e.event_type === "application.transcription_ready" && 
+         e.properties?.transcript
+  );
+  
+  if (!transcriptEvent) {
+    throw new Error('No transcription_ready event found in Tavus response');
   }
-
-  const transcript = validatedData.properties.transcript
-  console.log('Transcript fetched successfully:', {
+  
+  const transcript = transcriptEvent.properties.transcript || [];
+  console.log('Transcript extracted successfully:', {
     conversation_id: validatedData.conversation_id,
-    status: validatedData.status,
-    transcript_entries: transcript.length,
-    participant_count: validatedData.participant_count || 'unknown'
-  })
-
-  // Transform Tavus transcript format to our expected format
+    event_type: transcriptEvent.event_type,
+    transcript_entries: transcript.length
+  });
+  
+  // Transform transcript to expected format
   const transformedTranscript = transcript.map(entry => ({
-    role: determineRole(entry.participant_id, entry.role),
-    content: entry.content,
-    timestamp: entry.timestamp
-  }))
-
-  // Filter out empty or very short entries
+    role: determineRole(entry.role),
+    content: entry.content
+  }));
+  
+  // Filter out empty entries
   const filteredTranscript = transformedTranscript.filter(
     entry => entry.content && entry.content.trim().length > 5
-  )
-
+  );
+  
   console.log('Transcript transformation completed:', {
     original_entries: transcript.length,
     filtered_entries: filteredTranscript.length,
     user_responses: filteredTranscript.filter(t => t.role === 'user').length,
     assistant_responses: filteredTranscript.filter(t => t.role === 'assistant').length
-  })
-
+  });
+  
   if (filteredTranscript.filter(t => t.role === 'user').length === 0) {
-    throw new Error('No user responses found in transcript')
+    throw new Error('No user responses found in transcript');
   }
-
-  return filteredTranscript
+  
+  return filteredTranscript;
 }
 
-function determineRole(participantId: string, role?: string): 'user' | 'assistant' {
-  // If role is explicitly provided, use it
-  if (role === 'user' || role === 'human' || role === 'student') {
-    return 'user'
-  }
-  if (role === 'assistant' || role === 'ai' || role === 'bot' || role === 'examiner') {
-    return 'assistant'
-  }
-  
-  // Fall back to participant ID analysis
-  if (participantId.includes('replica') || participantId.includes('tavus') || participantId.includes('ai')) {
-    return 'assistant'
-  }
-  
-  // Default to user for unknown participant IDs
-  return 'user'
+// Simplified role determination
+function determineRole(role) {
+  const normalizedRole = (role || '').toLowerCase();
+  if (['user', 'human', 'student'].includes(normalizedRole)) return 'user';
+  if (['assistant', 'ai', 'bot', 'examiner'].includes(normalizedRole)) return 'assistant';
+  return 'user'; // Default to user
 }
 
 async function evaluateConversationWithAI(
