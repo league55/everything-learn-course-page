@@ -23,6 +23,22 @@ const EvaluationResultSchema = z.object({
   recommendations: z.array(z.string()).min(1).max(3)
 })
 
+// Tavus API response schema
+const TavusConversationSchema = z.object({
+  conversation_id: z.string(),
+  status: z.string(),
+  participant_count: z.number().optional(),
+  created_at: z.string(),
+  properties: z.object({
+    transcript: z.array(z.object({
+      participant_id: z.string(),
+      content: z.string(),
+      timestamp: z.number(),
+      role: z.string().optional()
+    })).optional()
+  }).optional()
+})
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -37,6 +53,92 @@ interface OpenAIResponse {
   }>
 }
 
+async function fetchTranscriptFromTavus(
+  conversationId: string,
+  apiKey: string
+): Promise<any[]> {
+  console.log('Fetching transcript from Tavus API for conversation:', conversationId)
+  
+  const response = await fetch(`https://tavusapi.com/v2/conversations/${conversationId}?verbose=true`, {
+    method: 'GET',
+    headers: {
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('Tavus API error:', {
+      status: response.status,
+      statusText: response.statusText,
+      body: errorText
+    })
+    throw new Error(`Tavus API error (${response.status}): ${errorText}`)
+  }
+
+  const data = await response.json()
+  console.log('Tavus API response received, parsing...')
+
+  // Validate the response structure
+  const validatedData = TavusConversationSchema.parse(data)
+  
+  if (!validatedData.properties?.transcript) {
+    throw new Error('No transcript available in Tavus API response')
+  }
+
+  const transcript = validatedData.properties.transcript
+  console.log('Transcript fetched successfully:', {
+    conversation_id: validatedData.conversation_id,
+    status: validatedData.status,
+    transcript_entries: transcript.length,
+    participant_count: validatedData.participant_count || 'unknown'
+  })
+
+  // Transform Tavus transcript format to our expected format
+  const transformedTranscript = transcript.map(entry => ({
+    role: determineRole(entry.participant_id, entry.role),
+    content: entry.content,
+    timestamp: entry.timestamp
+  }))
+
+  // Filter out empty or very short entries
+  const filteredTranscript = transformedTranscript.filter(
+    entry => entry.content && entry.content.trim().length > 5
+  )
+
+  console.log('Transcript transformation completed:', {
+    original_entries: transcript.length,
+    filtered_entries: filteredTranscript.length,
+    user_responses: filteredTranscript.filter(t => t.role === 'user').length,
+    assistant_responses: filteredTranscript.filter(t => t.role === 'assistant').length
+  })
+
+  if (filteredTranscript.filter(t => t.role === 'user').length === 0) {
+    throw new Error('No user responses found in transcript')
+  }
+
+  return filteredTranscript
+}
+
+function determineRole(participantId: string, role?: string): 'user' | 'assistant' {
+  // If role is explicitly provided, use it
+  if (role === 'user' || role === 'human' || role === 'student') {
+    return 'user'
+  }
+  if (role === 'assistant' || role === 'ai' || role === 'bot' || role === 'examiner') {
+    return 'assistant'
+  }
+  
+  // Fall back to participant ID analysis
+  if (participantId.includes('replica') || participantId.includes('tavus') || participantId.includes('ai')) {
+    return 'assistant'
+  }
+  
+  // Default to user for unknown participant IDs
+  return 'user'
+}
+
 async function evaluateConversationWithAI(
   transcript: any[],
   courseTopic: string,
@@ -49,6 +151,10 @@ async function evaluateConversationWithAI(
     .filter(msg => msg.role === 'user')
     .map(msg => msg.content)
     .join('\n\n--- Next Response ---\n\n')
+
+  if (!userResponses || userResponses.trim().length < 50) {
+    throw new Error('Insufficient user responses for evaluation')
+  }
 
   const evaluationPrompt = `As an expert examiner in "${courseTopic}", evaluate the following user responses from an oral examination.
 
@@ -164,10 +270,15 @@ Deno.serve(async (req: Request) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get OpenAI API key
+    // Get API keys
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     if (!openaiApiKey) {
       throw new Error('OpenAI API key not configured')
+    }
+
+    const tavusApiKey = Deno.env.get('TAVUS_API_KEY')
+    if (!tavusApiKey) {
+      throw new Error('Tavus API key not configured')
     }
 
     // Parse and validate request
@@ -177,7 +288,7 @@ Deno.serve(async (req: Request) => {
     const validatedRequest = EvaluationRequestSchema.parse(requestData)
     const { conversation_id, user_id, course_id } = validatedRequest
 
-    // Fetch conversation data with transcript
+    // Fetch conversation data (for metadata, not transcript)
     const { data: conversation, error: conversationError } = await supabase
       .from('video_conversations')
       .select('*')
@@ -199,15 +310,17 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Course not found: ${courseError?.message}`)
     }
 
-    // Extract transcript from session log
-    const transcript = conversation.session_log?.transcript
-    if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
-      throw new Error('No transcript available for evaluation')
-    }
-
-    console.log('Starting AI evaluation for conversation:', conversation_id)
+    console.log('Starting evaluation process for conversation:', conversation_id)
     console.log('Course:', course.topic)
-    console.log('Transcript entries:', transcript.length)
+
+    // Update evaluation status to "evaluating"
+    await supabase
+      .from('video_conversations')
+      .update({ evaluation_status: 'evaluating' })
+      .eq('tavus_conversation_id', conversation_id)
+
+    // Fetch transcript directly from Tavus API
+    const transcript = await fetchTranscriptFromTavus(conversation_id, tavusApiKey)
 
     // Get module summary (this could be enhanced to get specific module info)
     const moduleSummary = `Course depth level ${course.depth}: ${course.context}`
@@ -222,14 +335,20 @@ Deno.serve(async (req: Request) => {
 
     console.log('AI evaluation completed successfully')
 
-    // Store evaluation result in database
+    // Store evaluation result and transcript in database
     const { error: updateError } = await supabase
       .from('video_conversations')
       .update({
+        evaluation_status: 'completed',
+        evaluation_result: evaluation,
+        transcript: transcript, // Store the Tavus transcript for future reference
+        transcript_status: 'ready',
         session_log: {
           ...conversation.session_log,
           evaluation_result: evaluation,
-          evaluated_at: new Date().toISOString()
+          evaluated_at: new Date().toISOString(),
+          transcript_source: 'tavus_api',
+          transcript_fetched_at: new Date().toISOString()
         }
       })
       .eq('tavus_conversation_id', conversation_id)
@@ -300,6 +419,8 @@ Deno.serve(async (req: Request) => {
         success: true,
         conversation_id,
         evaluation,
+        transcript_entries: transcript.length,
+        user_responses: transcript.filter(t => t.role === 'user').length,
         qualifies_for_certificate: qualifiesForCertificate,
         certificate: certificate ? {
           certificate_id: certificate.certificateId,
@@ -315,6 +436,30 @@ Deno.serve(async (req: Request) => {
 
   } catch (error) {
     console.error('Error evaluating conversation:', error)
+
+    // Try to update conversation status to failed
+    try {
+      const requestData = await req.clone().json()
+      if (requestData.conversation_id) {
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        )
+
+        await supabase
+          .from('video_conversations')
+          .update({
+            evaluation_status: 'failed',
+            session_log: {
+              evaluation_error: error instanceof Error ? error.message : 'Unknown error',
+              evaluation_error_at: new Date().toISOString()
+            }
+          })
+          .eq('tavus_conversation_id', requestData.conversation_id)
+      }
+    } catch (updateError) {
+      console.error('Failed to update conversation with evaluation error:', updateError)
+    }
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
     
