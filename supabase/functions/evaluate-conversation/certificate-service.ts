@@ -53,6 +53,8 @@ export class EdgeCertificateAPI {
 
     async createAlgorandTransaction(certificateData) {
         try {
+            console.log('Starting Algorand transaction creation...');
+            
             // Get student's Algorand address
             const { data: userProfile } = await this.supabase
                 .from('user_profiles')
@@ -61,6 +63,47 @@ export class EdgeCertificateAPI {
                 .single();
 
             const studentAddress = userProfile?.algorand_address || '';
+            
+            if (!studentAddress) {
+                console.warn('No Algorand address found for student, using issuer address');
+                studentAddress = this.issuerAccount.addr;
+            }
+
+            // FUND ISSUER ACCOUNT FIRST (if needed)
+            const minIssuerBalance = 1_000_000; // 1 ALGO minimum for issuer
+            const issuerBalance = await this.getAccountBalance(this.issuerAccount.addr);
+            
+            console.log(`Issuer balance: ${issuerBalance} µALGO (minimum required: ${minIssuerBalance})`);
+            
+            if (issuerBalance < minIssuerBalance) {
+                console.log(`Issuer account needs funding. Current balance: ${issuerBalance}, Required: ${minIssuerBalance}`);
+                const fundAmount = minIssuerBalance + 100_000; // Add extra 0.1 ALGO buffer
+                console.log(`Attempting to fund issuer account with ${fundAmount} µALGO`);
+                
+                // This will only work if the issuer has at least enough for the transaction fee
+                // If completely empty, manual funding is required
+                try {
+                    await this.fundAccount(this.issuerAccount.addr, fundAmount - issuerBalance);
+                    console.log('Issuer account funded successfully');
+                } catch (fundError) {
+                    console.error('Failed to fund issuer account:', fundError);
+                    throw new Error(`Issuer account has insufficient funds and auto-funding failed: ${fundError.message}`);
+                }
+            }
+
+            // FUND RECEIVER ACCOUNT (if needed and different from issuer)
+            if (studentAddress !== this.issuerAccount.addr) {
+                const minReceiverBalance = 100_000; // 0.1 ALGO minimum for receiver
+                const receiverBalance = await this.getAccountBalance(studentAddress);
+                
+                console.log(`Receiver balance: ${receiverBalance} µALGO (minimum required: ${minReceiverBalance})`);
+                
+                if (receiverBalance < minReceiverBalance) {
+                    console.log(`Funding receiver ${studentAddress} with ${minReceiverBalance - receiverBalance} µALGO`);
+                    await this.fundAccount(studentAddress, minReceiverBalance - receiverBalance);
+                    console.log('Receiver account funded successfully');
+                }
+            }
 
             // Prepare transaction parameters
             const params = await this.algodClient.getTransactionParams().do();
@@ -103,7 +146,55 @@ export class EdgeCertificateAPI {
             return txId;
         } catch (error) {
             console.error('Algorand transaction failed:', error);
+            
+            // Provide more specific error messages
+            if (error.message && error.message.includes('overspend')) {
+                const balanceInfo = await this.getAccountBalance(this.issuerAccount.addr).catch(() => 'unknown');
+                throw new Error(`Insufficient funds in issuer account. Current balance: ${balanceInfo} µALGO. Please ensure the issuer account has at least 1 ALGO for operations.`);
+            }
+            
             throw error;
+        }
+    }
+    
+    async getAccountBalance(address) {
+        try {
+            const accountInfo = await this.algodClient.accountInformation(address).do();
+            return accountInfo.amount;
+        } catch (error) {
+            console.error(`Failed to get account balance for ${address}:`, error);
+            throw new Error(`Failed to get account balance: ${error.message}`);
+        }
+    }
+    
+    async fundAccount(receiver, amount) {
+        try {
+            console.log(`Funding account ${receiver} with ${amount} µALGO`);
+            
+            const params = await this.algodClient.getTransactionParams().do();
+            params.fee = 1000;
+            params.flatFee = true;
+
+            const fundTxn = algosdk.makePaymentTxnWithSuggestedParams(
+                this.issuerAccount.addr,
+                receiver,
+                amount,
+                undefined,
+                undefined,
+                params
+            );
+
+            const signedFundTxn = fundTxn.signTxn(this.issuerAccount.sk);
+            const { txId } = await this.algodClient.sendRawTransaction(signedFundTxn).do();
+            
+            console.log(`Funding transaction submitted: ${txId}`);
+            await algosdk.waitForConfirmation(this.algodClient, txId, 4);
+            console.log(`Funding transaction confirmed: ${txId}`);
+            
+            return txId;
+        } catch (error) {
+            console.error(`Failed to fund account ${receiver}:`, error);
+            throw new Error(`Failed to fund account: ${error.message}`);
         }
     }
 
